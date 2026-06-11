@@ -1,13 +1,19 @@
-use raylib::{ffi::Rectangle, prelude::*};
-use wasmtime::*;
+use raylib::prelude::*;
+use wasmtime::{Strategy::Cranelift, *};
 
-const FRAMEBUFFER_WIDTH: usize = 384;
-const FRAMEBUFFER_HEIGHT: usize = 216;
-const FRAMEBUFFER_SIZE: usize = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
+use crate::draw::DrawState;
+
+mod draw;
+mod input;
 
 fn get_memory_slice<'a>(instance: &'a Instance, store: &'a mut Store<Kernel>) -> &'a [u8] {
-    let framebuffer = instance.get_memory(&mut *store, "memory").unwrap();
-    framebuffer.data(store)
+    let memory = instance.get_memory(&mut *store, "memory").unwrap();
+    memory.data(store)
+}
+
+fn get_framebuffer<'a>(instance: &'a Instance, store: &'a mut Store<Kernel>, address: usize) -> &'a [u8] {
+    let memory = get_memory_slice(instance, store);
+    &memory[address..(address + draw::FRAMEBUFFER_SIZE)]
 }
 
 fn load_system_functions(linker: &mut Linker<Kernel>) -> wasmtime::Result<()> {
@@ -16,31 +22,27 @@ fn load_system_functions(linker: &mut Linker<Kernel>) -> wasmtime::Result<()> {
         "env",
         "set_active_framebuffer",
         |mut caller: Caller<Kernel>, framebuffer: i32| {
-            caller.data_mut().framebuffer_address = Some(framebuffer as u32);
+            caller.data_mut().drawstate.framebuffer_address = Some(framebuffer as u32);
         },
     )?;
 
+    linker.func_wrap(
+        "env",
+        "get_mouse_x",
+        |caller: Caller<Kernel>| {
+            caller.data().mousestate.x as i32
+        }
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "get_mouse_y",
+        |caller: Caller<Kernel>| {
+            caller.data().mousestate.y as i32
+        }
+    )?;
+
     Ok(())
-}
-
-/// Takes a byte in the format `0bRRRGGGBB` and returns an RGB tuple, normalized to `[0, 255]`.
-fn byte_to_rgb(byte: u8) -> (u8, u8, u8) {
-    let r: u8 = (byte & 0b11100000) >> 5;
-    let g: u8 = (byte & 0b00011100) >> 2;
-    let b: u8 = byte & 0b00000011;
-    (r.saturating_mul(37), g.saturating_mul(37), b * 85)
-}
-
-fn draw_framebuffer(framebuffer: &[u8], texture: &mut Texture2D) {
-    let mut fb_rgba8888 = [0u8; (FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 4) as usize];
-    for (i, pixel) in framebuffer.iter().enumerate() {
-        let (r, g, b) = byte_to_rgb(*pixel);
-        fb_rgba8888[i * 4] = r;
-        fb_rgba8888[i * 4 + 1] = g;
-        fb_rgba8888[i * 4 + 2] = b;
-        fb_rgba8888[i * 4 + 3] = 255;
-    }
-    texture.update_texture(&fb_rgba8888).unwrap();
 }
 
 struct WasmState {
@@ -69,7 +71,8 @@ impl WasmState {
         })
     }
 
-    fn run_init(&mut self) -> wasmtime::Result<()> {
+    /// Calls the `init` function of the program
+    fn init(&mut self) -> wasmtime::Result<()> {
         let init_func = self
             .instance
             .get_typed_func::<(), ()>(&mut self.store, "init")?;
@@ -77,45 +80,44 @@ impl WasmState {
         Ok(())
     }
 
+    /// Calls the `update` function of the program
     fn update(&mut self) {
-        // Call update function
         let update_func = self
             .instance
             .get_typed_func::<(), ()>(&mut self.store, "update")
             .unwrap();
         update_func.call(&mut self.store, ()).unwrap();
+    }
 
-        // Draw framebuffer
-        let kernel: *mut Kernel = self.store.data_mut();
-        if let Some(address) = unsafe { (*kernel).framebuffer_address } {
-            let memory = get_memory_slice(&self.instance, &mut self.store);
-            unsafe {
-                draw_framebuffer(
-                    &memory[address as usize..(address as usize + FRAMEBUFFER_SIZE)],
-                    &mut (*kernel).framebuffer_texture,
-                );
+    /// Draws the program's framebuffer to a texture
+    fn upload_framebuffer(&mut self) {
+        unsafe {
+            let kernel: *mut Kernel = self.store.data_mut();
+            if let Some(address) = (*kernel).drawstate.framebuffer_address {
+                let framebuffer = get_framebuffer(&self.instance, &mut self.store, address as usize);
+                (*kernel).drawstate.upload_framebuffer(framebuffer);
             }
         }
     }
 }
 
 struct Kernel {
-    framebuffer_address: Option<u32>,
-    framebuffer_texture: Texture2D,
+    drawstate: draw::DrawState,
+    mousestate: input::MouseState,
 }
 
 impl Kernel {
-    fn new(framebuffer_texture: Texture2D) -> Self {
+    fn new(drawstate: draw::DrawState) -> Self {
         Self {
-            framebuffer_address: None,
-            framebuffer_texture,
+            drawstate,
+            mousestate: input::MouseState::new(),
         }
     }
 }
 
 fn main() -> wasmtime::Result<()> {
     let (mut rl, thread) = raylib::init()
-        .size(FRAMEBUFFER_WIDTH as i32 * 2, FRAMEBUFFER_HEIGHT as i32 * 2)
+        .size(draw::FRAMEBUFFER_WIDTH as i32 * 2, draw::FRAMEBUFFER_HEIGHT as i32 * 2)
         .title("WasmOS Test")
         .resizable()
         .build();
@@ -124,21 +126,26 @@ fn main() -> wasmtime::Result<()> {
 
     let img = unsafe {
         raylib::ffi::GenImageColor(
-            FRAMEBUFFER_WIDTH as i32,
-            FRAMEBUFFER_HEIGHT as i32,
+            draw::FRAMEBUFFER_WIDTH as i32,
+            draw::FRAMEBUFFER_HEIGHT as i32,
             Color::BLACK,
         )
     };
     let img = unsafe { Image::from_raw(img) };
     let texture = rl.load_texture_from_image(&thread, &img).unwrap();
 
-    let engine = Engine::default();
-    let mut wasmstate = WasmState::new(&engine, Kernel::new(texture))?;
+    let mut config = Config::new();
+    config.strategy(Cranelift);
+    let engine = Engine::new(&config)?;
+    let drawstate = DrawState::new(texture);
+    let kernel = Kernel::new(drawstate);
+    let mut wasmstate = WasmState::new(&engine, kernel)?;
 
-    wasmstate.run_init().unwrap();
+    wasmstate.init().unwrap();
 
     while !rl.window_should_close() {
         wasmstate.update();
+        wasmstate.upload_framebuffer();
 
         if rl.is_key_pressed(KeyboardKey::KEY_F11) {
             rl.toggle_fullscreen();
@@ -147,20 +154,19 @@ fn main() -> wasmtime::Result<()> {
         let screen_width = rl.get_screen_width();
         let screen_height = rl.get_screen_height();
 
+        let mx = rl.get_mouse_x();
+        let my = rl.get_mouse_y();
+        let width = rl.get_screen_width();
+        let height = rl.get_screen_height();
+
+        println!("mx: {mx}, my: {my}");
+        println!("width: {width}, height: {height}");
+        println!("mousestate: {:?}", wasmstate.store.data().mousestate);
+
+        wasmstate.store.data_mut().mousestate.update(mx, my, width, height);
+
         let mut d = rl.begin_drawing(&thread);
-        d.draw_texture_pro(
-            &wasmstate.store.data().framebuffer_texture,
-            Rectangle::new(
-                0.0,
-                0.0,
-                FRAMEBUFFER_WIDTH as f32,
-                FRAMEBUFFER_HEIGHT as f32,
-            ),
-            Rectangle::new(0.0, 0.0, screen_width as f32, screen_height as f32),
-            Vector2::new(0.0, 0.0),
-            0.0,
-            Color::WHITE,
-        );
+        wasmstate.store.data().drawstate.draw_framebuffer(&mut d, screen_width, screen_height);
     }
 
     Ok(())
