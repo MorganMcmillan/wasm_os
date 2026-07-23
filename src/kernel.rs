@@ -5,6 +5,7 @@ use raylib::RaylibThread;
 use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
+use string_interner::symbol::SymbolU32;
 use tokio::task;
 use wasmtime::Engine;
 
@@ -56,11 +57,11 @@ impl Kernel {
         let kernel_ptr = &mut kernel as *mut Kernel;
         unsafe {
             let root_pid = (*kernel_ptr).open_root_process();
-            let root = (*kernel_ptr).get_process(root_pid).unwrap();
+            let root = (*kernel_ptr).get_process_mut(root_pid).unwrap();
             let join_handle = task::spawn(root.run());
 
             (*kernel_ptr)
-                .get_process(root_pid)
+                .get_process_mut(root_pid)
                 .unwrap()
                 .set_join_handle(join_handle);
         }
@@ -114,7 +115,14 @@ impl Kernel {
         todo!("unimplemented")
     }
 
-    pub fn get_process(&mut self, pid: Pid) -> Option<&mut Process> {
+    pub fn get_process(&self, pid: Pid) -> Option<&Process> {
+        match self.processes.get((pid - 1) as usize) {
+            Some(Some(process)) => Some(process),
+            _ => None,
+        }
+    }
+
+    pub fn get_process_mut(&mut self, pid: Pid) -> Option<&mut Process> {
         match self.processes.get_mut((pid - 1) as usize) {
             Some(Some(process)) => Some(process),
             _ => None,
@@ -171,7 +179,26 @@ impl Kernel {
 
         let event = Event::new(copied_data, sender, interned_name);
 
-        let receiver_process = self.get_process(receiver).unwrap();
+        let receiver_process = self.get_process_mut(receiver).unwrap();
         receiver_process.push_event(event);
+    }
+
+    pub fn set_current_event(&mut self, event_ptr: *const Event) {
+        self.current_event = Some(event_ptr);
+    }
+
+    pub fn get_current_event(&mut self) -> &Event {
+        unsafe {
+            std::mem::transmute(
+                self.current_event
+                    .expect("Attempted to call an event handler without any event data."),
+            )
+        }
+    }
+
+    pub fn get_event_name(&self, interned_name: SymbolU32) -> &str {
+        self.str_intern_state
+            .resolve(interned_name)
+            .unwrap_or("NO_EVENT_NAME")
     }
 }

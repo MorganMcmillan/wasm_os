@@ -12,6 +12,7 @@ use crate::wasm_state::{KernelStore, WasmState};
 
 /// Returns a view of a WASM memory.
 /// Note: this function exists entirely because I was having borrow errors.
+#[allow(invalid_reference_casting)]
 fn get_memory_slice<'a>(instance: &'a Instance, store: &'a KernelStore) -> &'a [u8] {
     let store_ptr = store as *const KernelStore as *mut KernelStore;
     unsafe {
@@ -43,6 +44,10 @@ impl Process {
         self.join_handle = Some(join_handle);
     }
 
+    pub fn push_event(&mut self, event: Event) {
+        self.event_queue.push(event);
+    }
+
     pub async fn run(&mut self) -> i32 {
         let self_ptr = self as *mut Self;
 
@@ -72,10 +77,6 @@ impl Process {
         }
     }
 
-    pub fn push_event(&mut self, event: Event) {
-        self.event_queue.push(event);
-    }
-
     fn process_queue(&mut self) {
         let mut old_event_queue = Vec::new();
         std::mem::swap(&mut old_event_queue, &mut self.event_queue);
@@ -86,7 +87,18 @@ impl Process {
     }
 
     fn process_event(&mut self, event: Event) {
-        todo!()
+        self.wasm_state
+            .kernel_mut()
+            .set_current_event(&raw const event);
+
+        let sym = event.interned_name;
+        if let Some(handler) = self.event_handlers.get(&sym) {
+            let result = handler.call(&mut self.wasm_state.store, ());
+            if let Err(e) = result {
+                let event_name = self.wasm_state.kernel_mut().get_event_name(sym);
+                eprintln!("Error in event handler {}: {}", event_name, e);
+            }
+        }
     }
 
     /// Gets a slice of memory

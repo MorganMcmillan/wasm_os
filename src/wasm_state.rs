@@ -1,5 +1,6 @@
 use crate::event::Event;
 use crate::kernel::{Kernel, Pid};
+use crate::process::Process;
 use crate::ptr_cell::PtrCell;
 use wasmtime::*;
 
@@ -21,18 +22,21 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
          to_pid: i32|
          -> i32 {
             let pid = caller.data().get().get_current_pid();
-            let Some(process) = caller.data_mut().get_mut().get_process(pid) else {
-                return 1;
+
+            let (name, data) = unsafe {
+                let Some(process) = caller.data().get().get_process(pid) else {
+                    return 1;
+                };
+                let process_ptr = process as *const Process;
+
+                let name = (*process_ptr).get_memory(name_ptr as usize, name_len as usize);
+                let Ok(name) = str::from_utf8(name) else {
+                    return 2;
+                };
+
+                let data = (*process_ptr).get_memory(data_ptr as usize, data_len as usize);
+                (name, data)
             };
-
-            let name = process.get_memory(name_ptr as usize, name_len as usize);
-            let Ok(name) = str::from_utf8(name) else {
-                return 2;
-            };
-
-            let data = process.get_memory(data_ptr as usize, data_len as usize);
-
-            drop(process);
 
             caller
                 .data_mut()
