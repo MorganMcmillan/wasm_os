@@ -1,4 +1,3 @@
-use crate::event::Event;
 use crate::kernel::{Kernel, Pid};
 use crate::process::Process;
 use crate::ptr_cell::PtrCell;
@@ -44,6 +43,22 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
                 .send_event(name, data, pid, to_pid as Pid);
 
             0
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "get_event_data",
+        |mut caller: KernelCaller, buf_ptr: i32| unsafe {
+            let caller_ptr = &mut caller as *mut KernelCaller;
+            let event = caller.data().get().get_current_event();
+            let pid = caller.data().get().get_current_pid();
+            let process = (*caller_ptr)
+                .data_mut()
+                .get_mut()
+                .get_process_mut(pid)
+                .unwrap();
+            process.set_memory(buf_ptr as usize, &event.data);
         },
     )?;
 

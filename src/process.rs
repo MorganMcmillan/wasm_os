@@ -21,6 +21,13 @@ fn get_memory_slice<'a>(instance: &'a Instance, store: &'a KernelStore) -> &'a [
     }
 }
 
+/// Returns a mutable view of a WASM memory.
+/// Note: this function exists entirely because I was having borrow errors.
+fn get_memory_slice_mut<'a>(instance: &'a Instance, store: &'a mut KernelStore) -> &'a mut [u8] {
+    let memory = instance.get_memory(&mut *store, "memory").unwrap();
+    memory.data_mut(store)
+}
+
 type HandlerFn = TypedFunc<(), ()>;
 
 pub struct Process {
@@ -105,6 +112,18 @@ impl Process {
     pub fn get_memory(&self, address: usize, len: usize) -> &[u8] {
         let memory = get_memory_slice(&self.wasm_state.instance, &self.wasm_state.store);
         &memory[address..(address + len)]
+    }
+
+    pub fn set_memory(&mut self, address: usize, value: &[u8]) {
+        let memory = get_memory_slice_mut(&self.wasm_state.instance, &mut self.wasm_state.store);
+        let memory = &mut memory[address..];
+        if memory.len() < value.len() {
+            panic!("Attempted to set memory region to value larger than region allows");
+        }
+
+        for (i, &byte) in value.iter().enumerate() {
+            memory[i] = byte;
+        }
     }
 
     /// Gets the region of memory associated with the active framebuffer's program.

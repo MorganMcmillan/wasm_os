@@ -1,5 +1,3 @@
-use std::mem::transmute;
-
 /// A simple wrapper type for representing pointers as references
 pub struct PtrCell<T: Sized> {
     pub inner: *mut T,
@@ -11,11 +9,11 @@ impl<T> PtrCell<T> {
     }
 
     pub fn get(&self) -> &T {
-        unsafe { transmute(self.inner) }
+        unsafe { &*self.inner }
     }
 
     pub fn get_mut(&mut self) -> &mut T {
-        unsafe { transmute(self.inner) }
+        unsafe { &mut *self.inner }
     }
 }
 

@@ -187,12 +187,11 @@ impl Kernel {
         self.current_event = Some(event_ptr);
     }
 
-    pub fn get_current_event(&mut self) -> &Event {
+    pub fn get_current_event(&self) -> &Event {
         unsafe {
-            std::mem::transmute(
-                self.current_event
-                    .expect("Attempted to call an event handler without any event data."),
-            )
+            &*self
+                .current_event
+                .expect("Attempted to call an event handler without any event data.")
         }
     }
 
