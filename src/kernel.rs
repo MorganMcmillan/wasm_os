@@ -12,6 +12,12 @@ use crate::process::Process;
 
 pub type Pid = u16;
 
+enum CreateProcessError {
+    FileNotFound,
+    InvalidWasm,
+    IncorrectFileType,
+}
+
 pub struct Kernel {
     engine: Engine,
     pub drawstate: draw::DrawState,
@@ -23,16 +29,43 @@ pub struct Kernel {
     str_intern_state: StringInterner<StringBackend>,
 }
 
+const BIOS_BOOT_PROCESS: &str = "/bios/boot.wasm";
+const ROM_BOOT_PROCESS: &str = "/rom/boot.wasm";
+const USER_BOOT_PROCESS: &str = "/boot.wasm";
+
 impl Kernel {
     pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
-        Self {
+        let mut kernel = Self {
             engine,
             drawstate,
             mousestate: input::MouseState::new(),
             processes: Vec::new(),
             current_pid: 0,
             str_intern_state: StringInterner::new(),
+        };
+        kernel.open_root_process();
+        kernel
+    }
+
+    fn open_root_process(&mut self) {
+        let is_ok = self.create_process(USER_BOOT_PROCESS, &[]).is_ok()
+            || self.create_process(ROM_BOOT_PROCESS, &[]).is_ok()
+            || self.create_process(BIOS_BOOT_PROCESS, &[]).is_ok();
+
+        if !is_ok {
+            panic!("Could not create boot process for any 'bios.wasm'.")
         }
+    }
+
+    pub fn root_exited(&self) -> bool {
+        match self.processes.get(0) {
+            Some(Some(_)) => false,
+            _ => true,
+        }
+    }
+
+    pub fn create_process(&mut self, path: &str, args: &[&str]) -> Result<Pid, CreateProcessError> {
+        todo!("unimplemented")
     }
 
     pub fn get_process(&mut self, pid: Pid) -> Option<&mut Process> {

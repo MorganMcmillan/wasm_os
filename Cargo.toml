@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 raylib = "6.0.0"
 string-interner = "0.20.0"
+tokio = { version = "1.53.1", features = ["full"] }
 wasmtime = "45.0.1"

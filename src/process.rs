@@ -11,17 +11,6 @@ fn get_memory_slice<'a>(instance: &'a Instance, store: &'a mut KernelStore) -> &
     memory.data(store)
 }
 
-/// Gets the region of memory associated with the active framebuffer's program.
-/// The returned slice is exactly 384*216 bytes.
-fn get_framebuffer<'a>(
-    instance: &'a Instance,
-    store: &'a mut KernelStore,
-    address: usize,
-) -> &'a [u8] {
-    let memory = get_memory_slice(instance, store);
-    &memory[address..(address + draw::FRAMEBUFFER_SIZE)]
-}
-
 pub struct Process {
     event_queue: Vec<Event>,
     wasm_state: WasmState,
@@ -35,15 +24,18 @@ impl Process {
         }
     }
 
+    pub async fn run(&mut self) {
+        todo!()
+    }
+
     pub fn push_event(&mut self, event: Event) {
         self.event_queue.push(event);
     }
 
+    /// Gets the region of memory associated with the active framebuffer's program.
+    /// The returned slice is exactly 384*216 bytes.
     pub fn get_framebuffer(&mut self, address: usize) -> &[u8] {
-        get_framebuffer(
-            &mut self.wasm_state.instance,
-            &mut self.wasm_state.store,
-            address,
-        )
+        let memory = get_memory_slice(&mut self.wasm_state.instance, &mut self.wasm_state.store);
+        &memory[address..(address + draw::FRAMEBUFFER_SIZE)]
     }
 }
