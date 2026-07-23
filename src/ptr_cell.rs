@@ -18,3 +18,6 @@ impl<T> PtrCell<T> {
         unsafe { transmute(self.inner) }
     }
 }
+
+unsafe impl<T> Send for PtrCell<T> {}
+unsafe impl<T> Sync for PtrCell<T> {}

@@ -1,17 +1,53 @@
-use crate::kernel::Kernel;
+use crate::event::Event;
+use crate::kernel::{Kernel, Pid};
 use crate::ptr_cell::PtrCell;
 use wasmtime::*;
 
 pub type KernelStore = Store<PtrCell<Kernel>>;
+type KernelCaller<'a> = Caller<'a, PtrCell<Kernel>>;
 
 /// Loads all core system functions into the program.
 /// TODO: allow drivers to register their own functions through this or a similar method.
 fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Result<()> {
-    // Load "set_active_framebuffer"
+    // Kernel methods
+    linker.func_wrap(
+        "env",
+        "send_event",
+        |mut caller: KernelCaller,
+         name_ptr: i32,
+         name_len: i32,
+         data_ptr: i32,
+         data_len: i32,
+         to_pid: i32|
+         -> i32 {
+            let pid = caller.data().get().get_current_pid();
+            let Some(process) = caller.data_mut().get_mut().get_process(pid) else {
+                return 1;
+            };
+
+            let name = process.get_memory(name_ptr as usize, name_len as usize);
+            let Ok(name) = str::from_utf8(name) else {
+                return 2;
+            };
+
+            let data = process.get_memory(data_ptr as usize, data_len as usize);
+
+            drop(process);
+
+            caller
+                .data_mut()
+                .get_mut()
+                .send_event(name, data, pid, to_pid as Pid);
+
+            0
+        },
+    )?;
+
+    // Draw state
     linker.func_wrap(
         "env",
         "set_active_framebuffer",
-        |mut caller: Caller<PtrCell<Kernel>>, framebuffer: i32| {
+        |mut caller: KernelCaller, framebuffer: i32| {
             let pid = caller.data().get().get_current_pid();
             caller
                 .data_mut()
@@ -21,11 +57,12 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
         },
     )?;
 
-    linker.func_wrap("env", "get_mouse_x", |caller: Caller<PtrCell<Kernel>>| {
+    // Input
+    linker.func_wrap("env", "get_mouse_x", |caller: KernelCaller| {
         caller.data().get().mousestate.x as i32
     })?;
 
-    linker.func_wrap("env", "get_mouse_y", |caller: Caller<PtrCell<Kernel>>| {
+    linker.func_wrap("env", "get_mouse_y", |caller: KernelCaller| {
         caller.data().get().mousestate.y as i32
     })?;
 
@@ -38,8 +75,7 @@ pub struct WasmState {
 }
 
 impl WasmState {
-    pub fn new(engine: &Engine, kernel: *mut Kernel) -> wasmtime::Result<Self> {
-        let binary = std::fs::read("test.wasm").unwrap();
+    pub fn new(binary: Vec<u8>, engine: &Engine, kernel: *mut Kernel) -> wasmtime::Result<Self> {
         // Modules are compiled from text or binary
         let module = Module::new(engine, binary)?;
 

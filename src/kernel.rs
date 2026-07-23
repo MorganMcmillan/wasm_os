@@ -1,21 +1,28 @@
+use std::io::ErrorKind::NotFound;
+
 use raylib::RaylibHandle;
 use raylib::RaylibThread;
 use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
+use tokio::task;
 use wasmtime::Engine;
 
 use crate::draw;
 use crate::event::Event;
+use crate::event::EventData;
 use crate::input;
 use crate::process::Process;
+use crate::wasm_state::WasmState;
 
 pub type Pid = u16;
 
-enum CreateProcessError {
+#[derive(Debug)]
+pub enum CreateProcessError {
     FileNotFound,
     InvalidWasm,
     IncorrectFileType,
+    Other,
 }
 
 pub struct Kernel {
@@ -26,12 +33,13 @@ pub struct Kernel {
     pub processes: Vec<Option<Process>>,
     // The current pid of the running program
     current_pid: Pid,
+    current_event: Option<*const Event>,
     str_intern_state: StringInterner<StringBackend>,
 }
 
-const BIOS_BOOT_PROCESS: &str = "/bios/boot.wasm";
-const ROM_BOOT_PROCESS: &str = "/rom/boot.wasm";
-const USER_BOOT_PROCESS: &str = "/boot.wasm";
+const BIOS_BOOT_PROCESS: &str = "bios/boot.wasm";
+const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
+const USER_BOOT_PROCESS: &str = "boot.wasm";
 
 impl Kernel {
     pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
@@ -41,30 +49,68 @@ impl Kernel {
             mousestate: input::MouseState::new(),
             processes: Vec::new(),
             current_pid: 0,
+            current_event: None,
             str_intern_state: StringInterner::new(),
         };
-        kernel.open_root_process();
+
+        let kernel_ptr = &mut kernel as *mut Kernel;
+        unsafe {
+            let root_pid = (*kernel_ptr).open_root_process();
+            let root = (*kernel_ptr).get_process(root_pid).unwrap();
+            let join_handle = task::spawn(root.run());
+
+            (*kernel_ptr)
+                .get_process(root_pid)
+                .unwrap()
+                .set_join_handle(join_handle);
+        }
+
         kernel
     }
 
-    fn open_root_process(&mut self) {
-        let is_ok = self.create_process(USER_BOOT_PROCESS, &[]).is_ok()
-            || self.create_process(ROM_BOOT_PROCESS, &[]).is_ok()
-            || self.create_process(BIOS_BOOT_PROCESS, &[]).is_ok();
+    fn open_root_process(&mut self) -> Pid {
+        let root_process = self.create_process(USER_BOOT_PROCESS).or_else(|_| {
+            self.create_process(ROM_BOOT_PROCESS)
+                .or_else(|_| self.create_process(BIOS_BOOT_PROCESS))
+        });
 
-        if !is_ok {
-            panic!("Could not create boot process for any 'bios.wasm'.")
+        match root_process {
+            Ok(r) => r,
+            Err(e) => panic!(
+                "Could not create boot process for any 'bios.wasm': {:?}.",
+                e
+            ),
         }
     }
 
     pub fn root_exited(&self) -> bool {
-        match self.processes.get(0) {
-            Some(Some(_)) => false,
-            _ => true,
-        }
+        matches!(self.processes.first(), Some(Some(_)))
     }
 
-    pub fn create_process(&mut self, path: &str, args: &[&str]) -> Result<Pid, CreateProcessError> {
+    pub fn create_process(&mut self, path: &str) -> Result<Pid, CreateProcessError> {
+        if !path.ends_with(".wasm") {
+            return Err(CreateProcessError::IncorrectFileType);
+        }
+
+        // TODO: prepend root directory to path
+        let binary = match std::fs::read(path) {
+            Ok(bin) => bin,
+            Err(e) => match e.kind() {
+                NotFound => return Err(CreateProcessError::FileNotFound),
+                _ => return Err(CreateProcessError::Other),
+            },
+        };
+
+        let self_ptr = self as *mut Kernel;
+
+        // TODO: add ability to set kernel filesystem root
+        let Ok(wasm_state) = WasmState::new(binary, &self.engine, self_ptr) else {
+            return Err(CreateProcessError::InvalidWasm);
+        };
+
+        let process = Process::new(wasm_state);
+        // TODO: figure out better way to handle process ids
+        self.processes.push(Some(process));
         todo!("unimplemented")
     }
 
@@ -110,7 +156,7 @@ impl Kernel {
     // Events
 
     pub fn send_event(&mut self, event_name: &str, event_data: &[u8], sender: Pid, receiver: Pid) {
-        if event_data.len() > 512 {
+        if event_data.len() > size_of::<EventData>() {
             // TODO: replace this panic with an error code or something
             panic!(
                 "Event data cannot be larger than 512 bytes, instead got {} bytes",

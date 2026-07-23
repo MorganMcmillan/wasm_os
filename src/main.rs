@@ -24,7 +24,7 @@ fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime::Resu
         )
     };
     let img = unsafe { Image::from_raw(img) };
-    let texture = rl.load_texture_from_image(&thread, &img).unwrap();
+    let texture = rl.load_texture_from_image(thread, &img).unwrap();
 
     let mut config = Config::new();
     config.strategy(Cranelift);
@@ -50,14 +50,14 @@ async fn main() -> wasmtime::Result<()> {
     let mut kernel = create_kernel(&mut rl, &thread)?;
 
     while !rl.window_should_close() {
-        kernel.update(&mut rl, &thread);
-        kernel.upload_framebuffer();
-
-        yield_now();
-
         if kernel.root_exited() {
             break;
         }
+
+        kernel.update(&mut rl, &thread);
+        kernel.upload_framebuffer();
+
+        yield_now().await;
     }
 
     Ok(())
