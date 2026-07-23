@@ -1,5 +1,5 @@
 use raylib::prelude::*;
-use tokio::task::yield_now;
+use tokio::task::{spawn_local, yield_now};
 use wasmtime::{Strategy::Cranelift, *};
 
 use crate::draw::DrawState;
@@ -50,18 +50,22 @@ async fn main() -> wasmtime::Result<()> {
 
     let mut kernel = create_kernel(&mut rl, &thread).await?;
 
-    while !rl.window_should_close() {
-        if kernel.root_exited() {
-            println!("Root exited!");
-            break;
+    let join_handle = spawn_local(async move {
+        while !rl.window_should_close() {
+            if kernel.root_exited() {
+                println!("Root exited!");
+                break;
+            }
+
+            kernel.update(&mut rl, &thread);
+            kernel.upload_framebuffer();
+            println!("Updating");
+
+            yield_now().await;
         }
+    });
 
-        kernel.update(&mut rl, &thread);
-        kernel.upload_framebuffer();
-        println!("Updating");
-
-        yield_now().await;
-    }
+    let _ = join_handle.await;
 
     Ok(())
 }
