@@ -1,2 +1,2 @@
 #!/bin/bash
-rustc test.rs --target wasm32-unknown-unknown
+rustc boot.rs --target wasm32-unknown-unknown

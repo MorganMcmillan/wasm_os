@@ -14,7 +14,7 @@ mod wasm_state;
 
 use kernel::Kernel;
 
-fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime::Result<Kernel> {
+async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime::Result<Kernel> {
     // Generate default texture image
     let img = unsafe {
         raylib::ffi::GenImageColor(
@@ -27,11 +27,12 @@ fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime::Resu
     let texture = rl.load_texture_from_image(thread, &img).unwrap();
 
     let mut config = Config::new();
+    config.wasm_component_model(true);
     config.strategy(Cranelift);
     let engine = Engine::new(&config)?;
     let drawstate = DrawState::new(texture);
 
-    Ok(Kernel::new(engine, drawstate))
+    Ok(Kernel::new(engine, drawstate).await)
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -47,15 +48,17 @@ async fn main() -> wasmtime::Result<()> {
 
     rl.set_target_fps(20);
 
-    let mut kernel = create_kernel(&mut rl, &thread)?;
+    let mut kernel = create_kernel(&mut rl, &thread).await?;
 
     while !rl.window_should_close() {
         if kernel.root_exited() {
+            println!("Root exited!");
             break;
         }
 
         kernel.update(&mut rl, &thread);
         kernel.upload_framebuffer();
+        println!("Updating");
 
         yield_now().await;
     }

@@ -43,7 +43,7 @@ const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
 impl Kernel {
-    pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
+    pub async fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
         let mut kernel = Self {
             engine,
             drawstate,
@@ -56,7 +56,7 @@ impl Kernel {
 
         let kernel_ptr = &mut kernel as *mut Kernel;
         unsafe {
-            let root_pid = (*kernel_ptr).open_root_process();
+            let root_pid = (*kernel_ptr).open_root_process().await;
             let root = (*kernel_ptr).get_process_mut(root_pid).unwrap();
             let join_handle = task::spawn(root.run());
 
@@ -69,26 +69,33 @@ impl Kernel {
         kernel
     }
 
-    fn open_root_process(&mut self) -> Pid {
-        let root_process = self.create_process(USER_BOOT_PROCESS).or_else(|_| {
-            self.create_process(ROM_BOOT_PROCESS)
-                .or_else(|_| self.create_process(BIOS_BOOT_PROCESS))
-        });
+    async fn open_root_process(&mut self) -> Pid {
+        let root_process = match self.create_process(USER_BOOT_PROCESS).await {
+            Err(CreateProcessError::FileNotFound) => {
+                match self.create_process(ROM_BOOT_PROCESS).await {
+                    Err(CreateProcessError::FileNotFound) => {
+                        self.create_process(BIOS_BOOT_PROCESS).await
+                    }
+                    result => result,
+                }
+            }
+            result => result,
+        };
 
         match root_process {
             Ok(r) => r,
             Err(e) => panic!(
-                "Could not create boot process for any 'bios.wasm': {:?}.",
+                "Could not create boot process for any 'boot.wasm': {:?}.",
                 e
             ),
         }
     }
 
     pub fn root_exited(&self) -> bool {
-        matches!(self.processes.first(), Some(Some(_)))
+        !matches!(self.processes.first(), Some(Some(_)))
     }
 
-    pub fn create_process(&mut self, path: &str) -> Result<Pid, CreateProcessError> {
+    pub async fn create_process(&mut self, path: &str) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
         }
@@ -105,14 +112,20 @@ impl Kernel {
         let self_ptr = self as *mut Kernel;
 
         // TODO: add ability to set kernel filesystem root
-        let Ok(wasm_state) = WasmState::new(binary, &self.engine, self_ptr) else {
-            return Err(CreateProcessError::InvalidWasm);
+        let wasm_state = match WasmState::new(binary, &self.engine, self_ptr).await {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("Wasm error: {:?}", e);
+                return Err(CreateProcessError::InvalidWasm);
+            }
         };
 
         let process = Process::new(wasm_state);
         // TODO: figure out better way to handle process ids
         self.processes.push(Some(process));
-        todo!("unimplemented")
+
+        let pid = self.processes.len() as u16;
+        Ok(pid)
     }
 
     pub fn get_process(&self, pid: Pid) -> Option<&Process> {
@@ -131,6 +144,14 @@ impl Kernel {
 
     pub fn get_current_pid(&self) -> Pid {
         self.current_pid
+    }
+
+    pub fn get_current_process(&self) -> &Process {
+        self.get_process(self.current_pid).unwrap()
+    }
+
+    pub fn get_current_process_mut(&mut self) -> &mut Process {
+        self.get_process_mut(self.current_pid).unwrap()
     }
 
     pub fn update(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
@@ -162,6 +183,10 @@ impl Kernel {
     }
 
     // Events
+    //
+    pub fn intern_event_name(&mut self, name: &str) -> SymbolU32 {
+        self.str_intern_state.get_or_intern(name)
+    }
 
     pub fn send_event(&mut self, event_name: &str, event_data: &[u8], sender: Pid, receiver: Pid) {
         if event_data.len() > size_of::<EventData>() {

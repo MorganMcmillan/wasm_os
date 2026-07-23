@@ -3,6 +3,7 @@
 
 static mut FRAMEBUFFER: [u8; 384 * 216] = [0; 384 * 216];
 
+#[link(wasm_import_module = "env")]
 extern "C" {
     #[link_name = "set_active_framebuffer"]
     fn set_active_framebuffer(framebuffer: *const u8);
@@ -12,13 +13,29 @@ extern "C" {
 
     #[link_name = "get_mouse_y"]
     fn get_mouse_y() -> i32;
+
+    #[link_name = "yield_now"]
+    fn yield_now();
 }
 
 #[no_mangle]
-fn init() {
+fn run() -> i32 {
     unsafe {
         set_active_framebuffer(&raw const FRAMEBUFFER as *const u8);
+
+        loop {
+            let mx = get_mouse_x() as usize;
+            let my = get_mouse_y() as usize;
+
+            set_pixel(mx, my, WHITE);
+            set_pixel(mx + 1, my, WHITE);
+            set_pixel(mx, my + 1, WHITE);
+            set_pixel(mx + 1, my + 1, WHITE);
+
+            yield_now();
+        }
     }
+    0
 }
 
 fn set_pixel_idx(idx: usize, color: u8) {
@@ -37,19 +54,6 @@ fn set_pixel(x: usize, y: usize, color: u8) {
 }
 
 const WHITE: u8 = 255;
-
-#[no_mangle]
-fn update() {
-    unsafe {
-        let mx = get_mouse_x() as usize;
-        let my = get_mouse_y() as usize;
-
-        set_pixel(mx, my, WHITE);
-        set_pixel(mx + 1, my, WHITE);
-        set_pixel(mx, my + 1, WHITE);
-        set_pixel(mx + 1, my + 1, WHITE);
-    }
-}
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {

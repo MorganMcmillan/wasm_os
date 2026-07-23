@@ -4,7 +4,7 @@ use std::task::{Context, Waker};
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
-use wasmtime::{Instance, TypedFunc};
+use wasmtime::{Func, Instance};
 
 use crate::draw;
 use crate::event::Event;
@@ -28,11 +28,9 @@ fn get_memory_slice_mut<'a>(instance: &'a Instance, store: &'a mut KernelStore) 
     memory.data_mut(store)
 }
 
-type HandlerFn = TypedFunc<(), ()>;
-
 pub struct Process {
     event_queue: Vec<Event>,
-    event_handlers: HashMap<SymbolU32, HandlerFn>,
+    event_handlers: HashMap<SymbolU32, Func>,
     wasm_state: WasmState,
     join_handle: Option<JoinHandle<i32>>,
 }
@@ -51,9 +49,22 @@ impl Process {
         self.join_handle = Some(join_handle);
     }
 
+    // Events
+
     pub fn push_event(&mut self, event: Event) {
         self.event_queue.push(event);
     }
+
+    pub fn add_event_handler(&mut self, name: SymbolU32, handler: Func) {
+        self.event_handlers.insert(name, handler);
+    }
+
+    // TODO: see if it's really worth removing handlers in programs.
+    pub fn remove_event_handler(&mut self, name: SymbolU32) {
+        self.event_handlers.remove(&name);
+    }
+
+    // Main Loop
 
     pub async fn run(&mut self) -> i32 {
         let self_ptr = self as *mut Self;
@@ -100,13 +111,15 @@ impl Process {
 
         let sym = event.interned_name;
         if let Some(handler) = self.event_handlers.get(&sym) {
-            let result = handler.call(&mut self.wasm_state.store, ());
+            let result = handler.call(&mut self.wasm_state.store, &[], &mut []);
             if let Err(e) = result {
                 let event_name = self.wasm_state.kernel_mut().get_event_name(sym);
                 eprintln!("Error in event handler {}: {}", event_name, e);
             }
         }
     }
+
+    // Memory
 
     /// Gets a slice of memory
     pub fn get_memory(&self, address: usize, len: usize) -> &[u8] {
