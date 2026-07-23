@@ -1,4 +1,9 @@
-use raylib::{drawing::{RaylibDraw, RaylibDrawHandle}, ffi::{Color, Vector2}, math::Rectangle, texture::{RaylibTexture2D, Texture2D}};
+use raylib::{
+    drawing::{RaylibDraw, RaylibDrawHandle},
+    ffi::{Color, Vector2},
+    math::Rectangle,
+    texture::{RaylibTexture2D, Texture2D},
+};
 
 pub const FRAMEBUFFER_WIDTH: usize = 384;
 pub const FRAMEBUFFER_HEIGHT: usize = 216;
@@ -21,12 +26,12 @@ impl DrawState {
     pub fn new(texture: Texture2D) -> Self {
         Self {
             framebuffer_address: None,
-            framebuffer_texture: texture
+            framebuffer_texture: texture,
         }
     }
 
     pub fn upload_framebuffer(&mut self, framebuffer: &[u8]) {
-        let mut fb_rgba8888 = [0u8; (FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 4) as usize];
+        let mut fb_rgba8888 = [0u8; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 4];
         for (i, pixel) in framebuffer.iter().enumerate() {
             let (r, g, b) = byte_to_rgb(*pixel);
             fb_rgba8888[i * 4] = r;
@@ -34,10 +39,17 @@ impl DrawState {
             fb_rgba8888[i * 4 + 2] = b;
             fb_rgba8888[i * 4 + 3] = 255;
         }
-        self.framebuffer_texture.update_texture(&fb_rgba8888).unwrap();
+        self.framebuffer_texture
+            .update_texture(&fb_rgba8888)
+            .unwrap();
     }
 
-    pub fn draw_framebuffer(&self, d: &mut RaylibDrawHandle, screen_width: i32, screen_height: i32) {
+    pub fn draw_framebuffer(
+        &self,
+        d: &mut RaylibDrawHandle,
+        screen_width: i32,
+        screen_height: i32,
+    ) {
         d.draw_texture_pro(
             &self.framebuffer_texture,
             Rectangle::new(
@@ -53,3 +65,4 @@ impl DrawState {
         );
     }
 }
+

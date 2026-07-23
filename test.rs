@@ -36,16 +36,18 @@ fn set_pixel(x: usize, y: usize, color: u8) {
     set_pixel_idx(idx, color);
 }
 
+const WHITE: u8 = 255;
+
 #[no_mangle]
 fn update() {
     unsafe {
         let mx = get_mouse_x() as usize;
         let my = get_mouse_y() as usize;
 
-        set_pixel(mx, my, 0b11111111);
-        set_pixel(mx + 1, my, 0b01010101);
-        set_pixel(mx, my + 1, 0b00110011);
-        set_pixel(mx + 1, my + 1, 0b10101010);
+        set_pixel(mx, my, WHITE);
+        set_pixel(mx + 1, my, WHITE);
+        set_pixel(mx, my + 1, WHITE);
+        set_pixel(mx + 1, my + 1, WHITE);
     }
 }
 
