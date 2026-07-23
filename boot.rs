@@ -23,17 +23,15 @@ fn run() -> i32 {
     unsafe {
         set_active_framebuffer(&raw const FRAMEBUFFER as *const u8);
 
-        loop {
-            let mx = get_mouse_x() as usize;
-            let my = get_mouse_y() as usize;
+        let mx = get_mouse_x() as usize;
+        let my = get_mouse_y() as usize;
 
-            set_pixel(mx, my, WHITE);
-            set_pixel(mx + 1, my, WHITE);
-            set_pixel(mx, my + 1, WHITE);
-            set_pixel(mx + 1, my + 1, WHITE);
+        set_pixel(mx, my, WHITE);
+        set_pixel(mx + 1, my, WHITE);
+        set_pixel(mx, my + 1, WHITE);
+        set_pixel(mx + 1, my + 1, WHITE);
 
-            yield_now();
-        }
+        yield_now();
     }
     0
 }

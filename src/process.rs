@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::task::Poll::{Pending, Ready};
 use std::task::{Context, Waker};
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, yield_now};
 
 use string_interner::symbol::SymbolU32;
 use wasmtime::{Func, Instance};
 
 use crate::draw;
 use crate::event::Event;
+use crate::ptr_cell::PtrCell;
 use crate::wasm_state::{KernelStore, WasmState};
 
 /// Returns a view of a WASM memory.
@@ -67,7 +68,7 @@ impl Process {
     // Main Loop
 
     pub async fn run(&mut self) -> i32 {
-        let self_ptr = self as *mut Self;
+        let mut self_cell = PtrCell::new(self as *mut Self);
 
         let run = self
             .wasm_state
@@ -77,12 +78,11 @@ impl Process {
         let mut main_loop = Box::pin(run.call_async(&mut self.wasm_state.store, ()));
 
         loop {
-            unsafe {
-                (*self_ptr).process_queue();
-            }
+            self_cell.get_mut().process_queue();
 
-            let mut context = Context::from_waker(Waker::noop());
-            match Future::poll(main_loop.as_mut(), &mut context) {
+            let poll_result =
+                Future::poll(main_loop.as_mut(), &mut Context::from_waker(Waker::noop()));
+            match poll_result {
                 Ready(result) => match result {
                     Ok(code) => return code,
                     Err(e) => {
@@ -90,7 +90,10 @@ impl Process {
                         return 100;
                     }
                 },
-                Pending => {}
+                Pending => {
+                    println!("Process pending");
+                    yield_now().await;
+                }
             }
         }
     }

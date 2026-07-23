@@ -35,7 +35,7 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
     Ok(Kernel::new(engine, drawstate).await)
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "local")]
 async fn main() -> wasmtime::Result<()> {
     let (mut rl, thread) = raylib::init()
         .size(

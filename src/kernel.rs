@@ -56,7 +56,7 @@ impl Kernel {
 
         let kernel_ptr = &mut kernel as *mut Kernel;
         unsafe {
-            let root_pid = (*kernel_ptr).open_root_process().await;
+            let root_pid = (*kernel_ptr).create_root_process().await;
             let root = (*kernel_ptr).get_process_mut(root_pid).unwrap();
             let join_handle = task::spawn(root.run());
 
@@ -69,7 +69,7 @@ impl Kernel {
         kernel
     }
 
-    async fn open_root_process(&mut self) -> Pid {
+    async fn create_root_process(&mut self) -> Pid {
         let root_process = match self.create_process(USER_BOOT_PROCESS).await {
             Err(CreateProcessError::FileNotFound) => {
                 match self.create_process(ROM_BOOT_PROCESS).await {

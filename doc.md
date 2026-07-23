@@ -1,3 +1,3 @@
 # Doc
 
-- Async code: see `async_test.rs` for how async processes are implementes
+- Async code: see `scratch/tokio_select_test` for how async processes are implementes
