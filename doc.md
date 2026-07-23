@@ -1,3 +1,3 @@
 # Doc
 
-- Async code: see `Test Stuff/async_test` for how async processes are implementes
+- Async code: see `async_test.rs` for how async processes are implementes

@@ -1,3 +1,4 @@
+use crate::kernel::Pid;
 use raylib::{
     drawing::{RaylibDraw, RaylibDrawHandle},
     ffi::{Color, Vector2},
@@ -18,7 +19,7 @@ fn byte_to_rgb(byte: u8) -> (u8, u8, u8) {
 }
 
 pub struct DrawState {
-    pub framebuffer_address: Option<u32>,
+    pub framebuffer_address: Option<(Pid, u32)>,
     pub framebuffer_texture: Texture2D,
 }
 
@@ -28,6 +29,10 @@ impl DrawState {
             framebuffer_address: None,
             framebuffer_texture: texture,
         }
+    }
+
+    pub fn set_framebuffer_address(&mut self, pid: Pid, mem_address: u32) {
+        self.framebuffer_address = Some(pid, mem_address)
     }
 
     pub fn upload_framebuffer(&mut self, framebuffer: &[u8]) {
@@ -65,4 +70,3 @@ impl DrawState {
         );
     }
 }
-

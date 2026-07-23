@@ -4,13 +4,14 @@ use wasmtime::{Strategy::Cranelift, *};
 use crate::draw::DrawState;
 
 mod draw;
+mod event;
 mod input;
 mod kernel;
+mod process;
 mod ptr_cell;
 mod wasm_state;
 
 use kernel::Kernel;
-use wasm_state::*;
 
 fn main() -> wasmtime::Result<()> {
     let (mut rl, thread) = raylib::init()
@@ -39,34 +40,11 @@ fn main() -> wasmtime::Result<()> {
     config.strategy(Cranelift);
     let engine = Engine::new(&config)?;
     let drawstate = DrawState::new(texture);
-    let mut kernel = Kernel::new(drawstate);
-
-    let mut wasmstate = WasmState::new(&engine, &mut kernel as *mut Kernel)?;
-    wasmstate.init().unwrap();
+    let mut kernel = Kernel::new(engine, drawstate);
 
     while !rl.window_should_close() {
-        wasmstate.update();
-        wasmstate.upload_framebuffer();
-
-        if rl.is_key_pressed(KeyboardKey::KEY_F11) {
-            rl.toggle_fullscreen();
-        }
-
-        let screen_width = rl.get_screen_width();
-        let screen_height = rl.get_screen_height();
-        let mx = rl.get_mouse_x();
-        let my = rl.get_mouse_y();
-
-        wasmstate
-            .kernel_mut()
-            .mousestate
-            .update(mx, my, screen_width, screen_height);
-
-        let mut d = rl.begin_drawing(&thread);
-        wasmstate
-            .kernel()
-            .drawstate
-            .draw_framebuffer(&mut d, screen_width, screen_height);
+        kernel.update(&mut rl, &thread);
+        kernel.upload_framebuffer();
     }
 
     Ok(())

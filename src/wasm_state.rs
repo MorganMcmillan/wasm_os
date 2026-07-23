@@ -1,27 +1,8 @@
-use crate::draw;
 use crate::kernel::Kernel;
 use crate::ptr_cell::PtrCell;
 use wasmtime::*;
 
-type KernelStore = Store<PtrCell<Kernel>>;
-
-/// Returns a view of a WASM memory.
-/// Note: this function exists entirely because I was having borrow errors.
-fn get_memory_slice<'a>(instance: &'a Instance, store: &'a mut KernelStore) -> &'a [u8] {
-    let memory = instance.get_memory(&mut *store, "memory").unwrap();
-    memory.data(store)
-}
-
-/// Gets the region of memory associated with the active framebuffer's program.
-/// The returned slice is exactly 384*216 bytes.
-fn get_framebuffer<'a>(
-    instance: &'a Instance,
-    store: &'a mut KernelStore,
-    address: usize,
-) -> &'a [u8] {
-    let memory = get_memory_slice(instance, store);
-    &memory[address..(address + draw::FRAMEBUFFER_SIZE)]
-}
+pub type KernelStore = Store<PtrCell<Kernel>>;
 
 /// Loads all core system functions into the program.
 /// TODO: allow drivers to register their own functions through this or a similar method.
@@ -31,7 +12,12 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
         "env",
         "set_active_framebuffer",
         |mut caller: Caller<PtrCell<Kernel>>, framebuffer: i32| {
-            caller.data_mut().get_mut().drawstate.framebuffer_address = Some(framebuffer as u32);
+            let pid = caller.data().get().get_current_pid();
+            caller
+                .data_mut()
+                .get_mut()
+                .drawstate
+                .set_framebuffer_address(pid, framebuffer as u32);
         },
     )?;
 
@@ -72,24 +58,6 @@ impl WasmState {
         })
     }
 
-    /// Calls the `init` function of the program
-    pub fn init(&mut self) -> wasmtime::Result<()> {
-        let init_func = self
-            .instance
-            .get_typed_func::<(), ()>(&mut self.store, "init")?;
-        init_func.call(&mut self.store, ())?;
-        Ok(())
-    }
-
-    /// Calls the `update` function of the program
-    pub fn update(&mut self) {
-        let update_func = self
-            .instance
-            .get_typed_func::<(), ()>(&mut self.store, "update")
-            .unwrap();
-        update_func.call(&mut self.store, ()).unwrap();
-    }
-
     pub fn kernel(&self) -> &Kernel {
         self.store.data().get()
     }
@@ -98,19 +66,7 @@ impl WasmState {
         self.store.data_mut().get_mut()
     }
 
-    pub fn kernel_ptr(&self) -> *mut Kernel {
-        self.store.data().inner
-    }
-
-    /// Draws the program's framebuffer to a texture
-    pub fn upload_framebuffer(&mut self) {
-        unsafe {
-            let kernel: *mut Kernel = self.store.data_mut().inner;
-            if let Some(address) = (*kernel).drawstate.framebuffer_address {
-                let framebuffer =
-                    get_framebuffer(&self.instance, &mut self.store, address as usize);
-                (*kernel).drawstate.upload_framebuffer(framebuffer);
-            }
-        }
-    }
+    // pub fn kernel_ptr(&self) -> *mut Kernel {
+    //     self.store.data().inner
+    // }
 }
