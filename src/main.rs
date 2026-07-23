@@ -7,8 +7,10 @@ mod draw;
 mod input;
 mod kernel;
 mod ptr_cell;
+mod wasm_state;
 
-use kernel::*;
+use kernel::Kernel;
+use wasm_state::*;
 
 fn main() -> wasmtime::Result<()> {
     let (mut rl, thread) = raylib::init()
@@ -37,9 +39,9 @@ fn main() -> wasmtime::Result<()> {
     config.strategy(Cranelift);
     let engine = Engine::new(&config)?;
     let drawstate = DrawState::new(texture);
-    let kernel = Kernel::new(drawstate);
+    let mut kernel = Kernel::new(drawstate);
 
-    let mut wasmstate = WasmState::new(&engine, kernel)?;
+    let mut wasmstate = WasmState::new(&engine, &mut kernel as *mut Kernel)?;
     wasmstate.init().unwrap();
 
     while !rl.window_should_close() {
