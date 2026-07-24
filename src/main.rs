@@ -68,20 +68,6 @@ async fn main() -> wasmtime::Result<()> {
                 let screen_height = rl.get_screen_height();
 
                 KERNEL.update(&mut rl);
-                // println!("Test data kernel: {}!", kernel.test_data);
-                // println!(
-                //     "Test data boot: {}!",
-                //     kernel
-                //         .processes
-                //         .first()
-                //         .as_ref()
-                //         .unwrap()
-                //         .as_ref()
-                //         .unwrap()
-                //         .wasm_state
-                //         .kernel()
-                //         .test_data
-                // );
                 KERNEL.upload_framebuffer();
 
                 let mut d = rl.begin_drawing(&thread);

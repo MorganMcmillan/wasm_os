@@ -150,7 +150,6 @@ fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<()> {
                 KERNEL
                     .drawstate
                     .set_framebuffer_address(pid, framebuffer as u32);
-                KERNEL.test_data = 6767;
             }
         },
     )?;

@@ -27,7 +27,6 @@ pub enum CreateProcessError {
 }
 
 pub struct Kernel {
-    pub test_data: i32,
     engine: Engine,
     pub drawstate: draw::DrawState,
     pub mousestate: input::MouseState,
@@ -46,7 +45,6 @@ const USER_BOOT_PROCESS: &str = "boot.wasm";
 impl Kernel {
     pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
         Self {
-            test_data: 42,
             engine,
             drawstate,
             mousestate: input::MouseState::new(),
