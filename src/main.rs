@@ -15,7 +15,8 @@ mod kernel;
 mod option_cell;
 mod process;
 mod ptr_cell;
-mod wasm_state;
+mod system_functions;
+mod wasm_process;
 
 const FRAMERATE: u32 = 60;
 

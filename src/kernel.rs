@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::io::ErrorKind::NotFound;
 use std::ptr::NonNull;
 
@@ -14,7 +16,7 @@ use crate::event::Event;
 use crate::event::EventData;
 use crate::input;
 use crate::process::Process;
-use crate::wasm_state::WasmProcess;
+use crate::wasm_process::WasmProcess;
 
 pub type Pid = u16;
 
@@ -32,6 +34,8 @@ pub struct Kernel {
     pub mousestate: input::MouseState,
     // A sparse map of Pids to processes
     pub processes: Vec<Option<WasmProcess>>,
+    // A map of process names to Pids
+    process_names: HashMap<Box<str>, Pid>,
     // The current pid of the running program
     current_pid: Pid,
     current_event: Option<NonNull<Event>>,
@@ -49,6 +53,7 @@ impl Kernel {
             drawstate,
             mousestate: input::MouseState::new(),
             processes: Vec::new(),
+            process_names: HashMap::new(),
             current_pid: 0,
             current_event: None,
             str_intern_state: StringInterner::new(),
@@ -112,7 +117,12 @@ impl Kernel {
 
         // TODO: figure out better way to handle process ids
         let pid = self.processes.len() as u16 + 1;
-        let process = Process::new(pid);
+        let path = std::path::Path::new(path);
+        let label = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("_UNKNOWN_PROGRAM");
+        let process = Process::new(pid, label);
 
         // TODO: add ability to set kernel filesystem root
         let wasm_state = match WasmProcess::new(binary, &self.engine, process).await {
@@ -146,14 +156,17 @@ impl Kernel {
         self.current_pid = pid;
     }
 
+    #[allow(dead_code)]
     pub fn get_current_pid(&self) -> Pid {
         self.current_pid
     }
 
+    #[allow(dead_code)]
     pub fn get_current_process(&self) -> &WasmProcess {
         self.get_process(self.current_pid).unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn get_current_process_mut(&mut self) -> &mut WasmProcess {
         self.get_process_mut(self.current_pid).unwrap()
     }
@@ -226,5 +239,19 @@ impl Kernel {
         self.str_intern_state
             .resolve(interned_name)
             .unwrap_or("NO_EVENT_NAME")
+    }
+
+    pub fn set_process_name(&mut self, pid: u16, name: &str) -> bool {
+        match self.process_names.entry(name.into()) {
+            Entry::Vacant(entry) => {
+                entry.insert(pid);
+                true
+            }
+            Entry::Occupied(_) => false,
+        }
+    }
+
+    pub fn get_pid_by_name(&self, name: &str) -> Pid {
+        self.process_names.get(name).copied().unwrap_or(0)
     }
 }

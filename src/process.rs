@@ -9,20 +9,27 @@ use wasmtime::Func;
 use crate::event::Event;
 use crate::kernel::Pid;
 
+/// A process represents the state of a running Webassembly process.
 pub struct Process {
+    // TODO: Add exit code that gets set when the process exits
+    // Along with a thing to check if the process has exited (maybe an option around the exit code)
     pid: Pid,
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, Func>,
     join_handle: Option<JoinHandle<i32>>,
+    // TODO: Add child processes
+    pub label: Box<str>,
 }
 
+#[allow(dead_code)]
 impl Process {
-    pub fn new(pid: Pid) -> Self {
+    pub fn new(pid: Pid, label: impl Into<Box<str>>) -> Self {
         Self {
             pid,
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             join_handle: None,
+            label: label.into(),
         }
     }
 
@@ -35,6 +42,10 @@ impl Process {
             panic!("Cannot set join handle of a process when it is already set!");
         }
         self.join_handle = Some(join_handle);
+    }
+
+    pub async fn kill(&mut self) {
+        let _ = self.join_handle.as_mut().unwrap().await;
     }
 
     // Events
