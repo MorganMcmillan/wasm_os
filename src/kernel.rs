@@ -42,6 +42,9 @@ pub struct Kernel {
     str_intern_state: StringInterner<StringBackend>,
 }
 
+unsafe impl Send for Kernel {}
+unsafe impl Sync for Kernel {}
+
 const BIOS_BOOT_PROCESS: &str = "bios/boot.wasm";
 const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
@@ -80,11 +83,11 @@ impl Kernel {
     }
 
     async fn create_boot_process(&mut self) -> Pid {
-        let root_process = match self.create_process(USER_BOOT_PROCESS).await {
+        let root_process = match self.create_process(USER_BOOT_PROCESS, 0).await {
             Err(CreateProcessError::FileNotFound) => {
-                match self.create_process(ROM_BOOT_PROCESS).await {
+                match self.create_process(ROM_BOOT_PROCESS, 0).await {
                     Err(CreateProcessError::FileNotFound) => {
-                        self.create_process(BIOS_BOOT_PROCESS).await
+                        self.create_process(BIOS_BOOT_PROCESS, 0).await
                     }
                     result => result,
                 }
@@ -101,7 +104,11 @@ impl Kernel {
         }
     }
 
-    pub async fn create_process(&mut self, path: &str) -> Result<Pid, CreateProcessError> {
+    pub async fn create_process(
+        &mut self,
+        path: &str,
+        parent: Pid,
+    ) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
         }
@@ -122,7 +129,7 @@ impl Kernel {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
-        let process = Process::new(pid, label);
+        let process = Process::new(pid, parent, label);
 
         // TODO: add ability to set kernel filesystem root
         let wasm_state = match WasmProcess::new(binary, &self.engine, process).await {
@@ -134,6 +141,15 @@ impl Kernel {
         };
 
         self.processes.push(Some(wasm_state));
+
+        // If not root process:
+        if parent != 0 {
+            self.get_process_mut(parent)
+                .expect("Expected a parent process to exist.")
+                .store
+                .data_mut()
+                .add_child(pid);
+        }
 
         Ok(pid)
     }

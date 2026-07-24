@@ -45,6 +45,30 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         caller.data().pid() as i32
     })?;
 
+    // Return Pid
+    linker.func_wrap_async(
+        "env",
+        "spawn",
+        |caller: ProcessCaller, (path_ptr, path_len): (i32, i32)| {
+            let result = get_str(&caller, path_ptr, path_len);
+            let pid = caller.data().pid();
+
+            Box::new(async move {
+                unsafe {
+                    let path = match result {
+                        Ok(p) => p,
+                        Err(_) => return 0,
+                    };
+
+                    match KERNEL.create_process(path, pid).await {
+                        Ok(id) => id as i32,
+                        Err(_) => 0,
+                    }
+                }
+            })
+        },
+    )?;
+
     // Inter-process communication
 
     linker.func_wrap(

@@ -14,6 +14,8 @@ pub struct Process {
     // TODO: Add exit code that gets set when the process exits
     // Along with a thing to check if the process has exited (maybe an option around the exit code)
     pid: Pid,
+    parent_pid: Pid,
+    pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, Func>,
     join_handle: Option<JoinHandle<i32>>,
@@ -23,9 +25,11 @@ pub struct Process {
 
 #[allow(dead_code)]
 impl Process {
-    pub fn new(pid: Pid, label: impl Into<Box<str>>) -> Self {
+    pub fn new(pid: Pid, parent_pid: Pid, label: impl Into<Box<str>>) -> Self {
         Self {
             pid,
+            parent_pid,
+            children: Vec::new(),
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             join_handle: None,
@@ -35,6 +39,14 @@ impl Process {
 
     pub fn pid(&self) -> Pid {
         self.pid
+    }
+
+    pub fn parent_pid(&self) -> Pid {
+        self.parent_pid
+    }
+
+    pub fn add_child(&mut self, pid: Pid) {
+        self.children.push(pid);
     }
 
     pub fn set_join_handle(&mut self, join_handle: JoinHandle<i32>) {
