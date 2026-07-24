@@ -26,6 +26,7 @@ pub enum CreateProcessError {
 }
 
 pub struct Kernel {
+    pub test_data: i32,
     engine: Engine,
     pub drawstate: draw::DrawState,
     pub mousestate: input::MouseState,
@@ -44,6 +45,7 @@ const USER_BOOT_PROCESS: &str = "boot.wasm";
 impl Kernel {
     pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
         Self {
+            test_data: 42,
             engine,
             drawstate,
             mousestate: input::MouseState::new(),
@@ -61,7 +63,7 @@ impl Kernel {
     pub async fn run_boot(&mut self) {
         let kptr = self as *mut Self;
         unsafe {
-            let root_pid = self.create_boot_process().await;
+            let root_pid = self.create_boot_process(kptr).await;
             let root = (*kptr).get_process_mut(root_pid).unwrap();
             let join_handle = task::spawn(root.run());
 
@@ -71,12 +73,12 @@ impl Kernel {
         }
     }
 
-    async fn create_boot_process(&mut self) -> Pid {
-        let root_process = match self.create_process(USER_BOOT_PROCESS).await {
+    async fn create_boot_process(&mut self, kptr: *mut Self) -> Pid {
+        let root_process = match self.create_process(kptr, USER_BOOT_PROCESS).await {
             Err(CreateProcessError::FileNotFound) => {
-                match self.create_process(ROM_BOOT_PROCESS).await {
+                match self.create_process(kptr, ROM_BOOT_PROCESS).await {
                     Err(CreateProcessError::FileNotFound) => {
-                        self.create_process(BIOS_BOOT_PROCESS).await
+                        self.create_process(kptr, BIOS_BOOT_PROCESS).await
                     }
                     result => result,
                 }
@@ -93,7 +95,11 @@ impl Kernel {
         }
     }
 
-    pub async fn create_process(&mut self, path: &str) -> Result<Pid, CreateProcessError> {
+    pub async fn create_process(
+        &mut self,
+        kptr: *mut Self,
+        path: &str,
+    ) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
         }
@@ -106,8 +112,6 @@ impl Kernel {
                 _ => return Err(CreateProcessError::Other),
             },
         };
-
-        let kptr = self as *mut Self;
 
         // TODO: add ability to set kernel filesystem root
         let wasm_state = match WasmState::new(binary, &self.engine, kptr).await {

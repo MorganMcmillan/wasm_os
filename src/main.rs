@@ -60,9 +60,9 @@ async fn main() -> wasmtime::Result<()> {
             let screen_height = rl.get_screen_height();
 
             kernel.update(&mut rl);
-            println!("Framebuffer was set: {}!", kernel.drawstate.was_set);
+            println!("Test data kernel: {}!", kernel.test_data);
             println!(
-                "Framebuffer was set within boot: {}!",
+                "Test data boot: {}!",
                 kernel
                     .processes
                     .first()
@@ -72,8 +72,7 @@ async fn main() -> wasmtime::Result<()> {
                     .unwrap()
                     .wasm_state
                     .kernel()
-                    .drawstate
-                    .was_set
+                    .test_data
             );
             kernel.upload_framebuffer();
 

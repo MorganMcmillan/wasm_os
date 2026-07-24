@@ -19,7 +19,6 @@ fn byte_to_rgb(byte: u8) -> (u8, u8, u8) {
 }
 
 pub struct DrawState {
-    pub was_set: bool,
     pub framebuffer_address: Option<(Pid, u32)>,
     pub framebuffer_texture: Texture2D,
 }
@@ -27,7 +26,6 @@ pub struct DrawState {
 impl DrawState {
     pub fn new(texture: Texture2D) -> Self {
         Self {
-            was_set: false,
             framebuffer_address: None,
             framebuffer_texture: texture,
         }
