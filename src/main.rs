@@ -20,19 +20,18 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
         raylib::ffi::GenImageColor(
             draw::FRAMEBUFFER_WIDTH as i32,
             draw::FRAMEBUFFER_HEIGHT as i32,
-            Color::BLACK,
+            Color::RED,
         )
     };
     let img = unsafe { Image::from_raw(img) };
     let texture = rl.load_texture_from_image(thread, &img).unwrap();
 
     let mut config = Config::new();
-    config.wasm_component_model(true);
     config.strategy(Cranelift);
     let engine = Engine::new(&config)?;
     let drawstate = DrawState::new(texture);
 
-    Ok(Kernel::new(engine, drawstate).await)
+    Ok(Kernel::new(engine, drawstate))
 }
 
 #[tokio::main(flavor = "local")]
@@ -49,6 +48,7 @@ async fn main() -> wasmtime::Result<()> {
     rl.set_target_fps(20);
 
     let mut kernel = create_kernel(&mut rl, &thread).await?;
+    kernel.run_boot().await;
 
     let join_handle = spawn_local(async move {
         while !rl.window_should_close() {
@@ -56,8 +56,31 @@ async fn main() -> wasmtime::Result<()> {
                 break;
             }
 
-            kernel.update(&mut rl, &thread);
+            let screen_width = rl.get_screen_width();
+            let screen_height = rl.get_screen_height();
+
+            kernel.update(&mut rl);
+            println!("Framebuffer was set: {}!", kernel.drawstate.was_set);
+            println!(
+                "Framebuffer was set within boot: {}!",
+                kernel
+                    .processes
+                    .first()
+                    .as_ref()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .wasm_state
+                    .kernel()
+                    .drawstate
+                    .was_set
+            );
             kernel.upload_framebuffer();
+
+            let mut d = rl.begin_drawing(&thread);
+            kernel
+                .drawstate
+                .draw_framebuffer(&mut d, screen_width, screen_height);
 
             yield_now().await;
         }

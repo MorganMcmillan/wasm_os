@@ -132,14 +132,11 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
         |mut caller: KernelCaller, name_ptr: i32, name_len: i32| -> i32 {
             unsafe {
                 let caller_ptr = &mut caller as *mut KernelCaller;
+                let pid = caller.data().get().get_current_pid();
 
-                let name = {
-                    let process = caller.data().get().get_current_process();
-                    let bytes = process.get_memory(name_ptr as usize, name_len as usize);
-                    let Ok(name) = str::from_utf8(bytes) else {
-                        return 1;
-                    };
-                    name
+                let name = match get_str(caller_ptr, pid, name_ptr, name_len) {
+                    Ok(o) => o,
+                    Err(e) => return e,
                 };
                 let interned_name = (*caller_ptr).data_mut().get_mut().intern_event_name(name);
 
@@ -155,13 +152,14 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
         "env",
         "set_active_framebuffer",
         |mut caller: KernelCaller, framebuffer: i32| {
-            println!("Called set_active_framebuffer");
             let pid = caller.data().get().get_current_pid();
             caller
                 .data_mut()
                 .get_mut()
                 .drawstate
                 .set_framebuffer_address(pid, framebuffer as u32);
+            caller.data_mut().get_mut().drawstate.was_set = true;
+            println!("Called set_active_framebuffer.");
         },
     )?;
 
@@ -221,9 +219,9 @@ impl WasmState {
         Ok(Self { instance, store })
     }
 
-    // pub fn kernel(&self) -> &Kernel {
-    //     self.store.data().get()
-    // }
+    pub fn kernel(&self) -> &Kernel {
+        self.store.data().get()
+    }
 
     pub fn kernel_mut(&mut self) -> &mut Kernel {
         self.store.data_mut().get_mut()

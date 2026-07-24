@@ -6,7 +6,6 @@ use tokio::task::{JoinHandle, yield_now};
 use string_interner::symbol::SymbolU32;
 use wasmtime::{Func, Instance};
 
-use crate::draw;
 use crate::event::Event;
 use crate::kernel::Pid;
 use crate::ptr_cell::PtrCell;
@@ -34,7 +33,7 @@ pub struct Process {
     pid: Pid,
     event_queue: Vec<Event>,
     event_handlers: HashMap<SymbolU32, Func>,
-    wasm_state: WasmState,
+    pub wasm_state: WasmState,
     join_handle: Option<JoinHandle<i32>>,
 }
 
@@ -102,7 +101,6 @@ impl Process {
                     }
                 },
                 Pending => {
-                    println!("Process pending");
                     yield_now().await;
                 }
             }
@@ -151,11 +149,5 @@ impl Process {
         for (i, &byte) in value.iter().enumerate() {
             memory[i] = byte;
         }
-    }
-
-    /// Gets the region of memory associated with the active framebuffer's program.
-    /// The returned slice is exactly 384*216 bytes.
-    pub fn get_framebuffer(&self, address: usize) -> &[u8] {
-        self.get_memory(address, draw::FRAMEBUFFER_SIZE)
     }
 }

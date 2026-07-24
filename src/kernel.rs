@@ -1,7 +1,6 @@
 use std::io::ErrorKind::NotFound;
 
 use raylib::RaylibHandle;
-use raylib::RaylibThread;
 use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
@@ -43,8 +42,8 @@ const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
 impl Kernel {
-    pub async fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
-        let mut kernel = Self {
+    pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
+        Self {
             engine,
             drawstate,
             mousestate: input::MouseState::new(),
@@ -52,24 +51,27 @@ impl Kernel {
             current_pid: 0,
             current_event: None,
             str_intern_state: StringInterner::new(),
-        };
+        }
+    }
 
-        let kernel_ptr = &mut kernel as *mut Kernel;
+    pub fn root_exited(&self) -> bool {
+        !matches!(self.processes.first(), Some(Some(_)))
+    }
+
+    pub async fn run_boot(&mut self) {
+        let kptr = self as *mut Self;
         unsafe {
-            let root_pid = (*kernel_ptr).create_root_process().await;
-            let root = (*kernel_ptr).get_process_mut(root_pid).unwrap();
+            let root_pid = self.create_boot_process().await;
+            let root = (*kptr).get_process_mut(root_pid).unwrap();
             let join_handle = task::spawn(root.run());
 
-            (*kernel_ptr)
-                .get_process_mut(root_pid)
+            self.get_process_mut(root_pid)
                 .unwrap()
                 .set_join_handle(join_handle);
         }
-
-        kernel
     }
 
-    async fn create_root_process(&mut self) -> Pid {
+    async fn create_boot_process(&mut self) -> Pid {
         let root_process = match self.create_process(USER_BOOT_PROCESS).await {
             Err(CreateProcessError::FileNotFound) => {
                 match self.create_process(ROM_BOOT_PROCESS).await {
@@ -91,10 +93,6 @@ impl Kernel {
         }
     }
 
-    pub fn root_exited(&self) -> bool {
-        !matches!(self.processes.first(), Some(Some(_)))
-    }
-
     pub async fn create_process(&mut self, path: &str) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
@@ -109,10 +107,10 @@ impl Kernel {
             },
         };
 
-        let self_ptr = self as *mut Kernel;
+        let kptr = self as *mut Self;
 
         // TODO: add ability to set kernel filesystem root
-        let wasm_state = match WasmState::new(binary, &self.engine, self_ptr).await {
+        let wasm_state = match WasmState::new(binary, &self.engine, kptr).await {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Wasm error: {:?}", e);
@@ -129,7 +127,7 @@ impl Kernel {
     }
 
     pub fn get_process(&self, pid: Pid) -> Option<&Process> {
-        match self.processes.get(pid.saturating_sub(1) as usize) {
+        match self.processes.get((pid - 1) as usize) {
             Some(Some(process)) => Some(process),
             _ => None,
         }
@@ -158,7 +156,7 @@ impl Kernel {
         self.get_process_mut(self.current_pid).unwrap()
     }
 
-    pub fn update(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+    pub fn update(&mut self, rl: &mut RaylibHandle) {
         if rl.is_key_pressed(KeyboardKey::KEY_F11) {
             rl.toggle_fullscreen();
         }
@@ -169,10 +167,6 @@ impl Kernel {
         let my = rl.get_mouse_y();
 
         self.mousestate.update(mx, my, screen_width, screen_height);
-
-        let mut d = rl.begin_drawing(thread);
-        self.drawstate
-            .draw_framebuffer(&mut d, screen_width, screen_height);
     }
 
     pub fn upload_framebuffer(&mut self) {
@@ -180,14 +174,17 @@ impl Kernel {
         unsafe {
             if let Some((pid, address)) = (*kernel).drawstate.framebuffer_address {
                 let process = (*kernel).get_process(pid).unwrap();
-                let framebuffer = process.get_framebuffer(address as usize);
+                let framebuffer = process.get_memory(address as usize, draw::FRAMEBUFFER_SIZE);
+                println!("Framebuffer: {:?}", framebuffer);
                 (*kernel).drawstate.upload_framebuffer(framebuffer);
+            } else {
+                eprintln!("Warning: no framebuffer set!");
             }
         }
     }
 
     // Events
-    //
+
     pub fn intern_event_name(&mut self, name: &str) -> SymbolU32 {
         self.str_intern_state.get_or_intern(name)
     }
@@ -201,7 +198,7 @@ impl Kernel {
             );
         }
         let interned_name = self.str_intern_state.get_or_intern(event_name);
-        let mut copied_data = [0u8; 512];
+        let mut copied_data = [0u8; size_of::<EventData>()];
         for (i, &byte) in event_data.iter().enumerate() {
             copied_data[i] = byte;
         }
