@@ -64,7 +64,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                         Err(_) => return 0,
                     };
 
-                    match KERNEL.create_process(path, pid).await {
+                    match KERNEL.run_process(path, pid).await {
                         Ok(id) => id as i32,
                         Err(_) => 0,
                     }

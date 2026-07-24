@@ -11,6 +11,7 @@ use string_interner::symbol::SymbolU32;
 use tokio::task;
 use wasmtime::Engine;
 
+use crate::KERNEL;
 use crate::draw;
 use crate::event::Event;
 use crate::event::EventData;
@@ -102,6 +103,24 @@ impl Kernel {
                 e
             ),
         }
+    }
+
+    pub async fn run_process(
+        &mut self,
+        path: &str,
+        parent: Pid,
+    ) -> Result<Pid, CreateProcessError> {
+        let pid = self.create_process(path, parent).await?;
+        let process = unsafe { KERNEL.get_process_mut(pid).unwrap() };
+        let join_handle = task::spawn(process.run());
+
+        self.get_process_mut(pid)
+            .unwrap()
+            .store
+            .data_mut()
+            .set_join_handle(join_handle);
+
+        Ok(pid)
     }
 
     pub async fn create_process(
