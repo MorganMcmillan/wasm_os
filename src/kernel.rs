@@ -192,12 +192,7 @@ impl Kernel {
             rl.toggle_fullscreen();
         }
 
-        let screen_width = rl.get_screen_width();
-        let screen_height = rl.get_screen_height();
-        let mx = rl.get_mouse_x();
-        let my = rl.get_mouse_y();
-
-        self.mousestate.update(mx, my, screen_width, screen_height);
+        self.mousestate.update(rl);
     }
 
     pub fn upload_framebuffer(&mut self) {

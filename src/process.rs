@@ -13,12 +13,13 @@ use crate::kernel::Pid;
 pub struct Process {
     // TODO: Add exit code that gets set when the process exits
     // Along with a thing to check if the process has exited (maybe an option around the exit code)
-    pid: Pid,
-    parent_pid: Pid,
+    pub pid: Pid,
+    pub parent_pid: Pid,
+    pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, Func>,
-    join_handle: Option<JoinHandle<i32>>,
+    pub join_handle: Option<JoinHandle<i32>>,
     // TODO: Add child processes
     pub label: Box<str>,
 }
@@ -29,20 +30,13 @@ impl Process {
         Self {
             pid,
             parent_pid,
+            exit_code: None,
             children: Vec::new(),
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             join_handle: None,
             label: label.into(),
         }
-    }
-
-    pub fn pid(&self) -> Pid {
-        self.pid
-    }
-
-    pub fn parent_pid(&self) -> Pid {
-        self.parent_pid
     }
 
     pub fn add_child(&mut self, pid: Pid) {

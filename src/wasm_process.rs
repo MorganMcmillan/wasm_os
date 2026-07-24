@@ -74,7 +74,7 @@ impl WasmProcess {
 
         loop {
             unsafe {
-                KERNEL.set_current_pid(self_cell.get().store.data().pid());
+                KERNEL.set_current_pid(self_cell.get().store.data().pid);
             }
 
             self_cell.get_mut().process_queue();
@@ -83,9 +83,13 @@ impl WasmProcess {
                 Future::poll(main_loop.as_mut(), &mut Context::from_waker(Waker::noop()));
             match poll_result {
                 Ready(result) => match result {
-                    Ok(code) => return code,
+                    Ok(code) => {
+                        self_cell.get_mut().store.data_mut().exit_code = Some(code as u16);
+                        return code;
+                    }
                     Err(e) => {
                         eprintln!("{e}");
+                        self_cell.get_mut().store.data_mut().exit_code = Some(100);
                         return 100;
                     }
                 },

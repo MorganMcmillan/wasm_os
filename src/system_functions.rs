@@ -10,7 +10,7 @@ type ProcessCaller<'a> = Caller<'a, Process>;
 #[allow(mismatched_lifetime_syntaxes)]
 fn get_memory(caller: *const ProcessCaller, mem_ptr: i32, mem_len: i32) -> Result<&[u8], i32> {
     unsafe {
-        let process = KERNEL.get_process_mut((*caller).data().pid()).unwrap();
+        let process = KERNEL.get_process_mut((*caller).data().pid).unwrap();
 
         let mem = process.get_memory(mem_ptr as usize, mem_len as usize);
         Ok(mem)
@@ -42,7 +42,11 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
     )?;
 
     linker.func_wrap("env", "get_pid", |caller: ProcessCaller| -> i32 {
-        caller.data().pid() as i32
+        caller.data().pid as i32
+    })?;
+
+    linker.func_wrap("env", "get_parent_pid", |caller: ProcessCaller| -> i32 {
+        caller.data().parent_pid as i32
     })?;
 
     // Return Pid
@@ -51,7 +55,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "spawn",
         |caller: ProcessCaller, (path_ptr, path_len): (i32, i32)| {
             let result = get_str(&caller, path_ptr, path_len);
-            let pid = caller.data().pid();
+            let pid = caller.data().pid;
 
             Box::new(async move {
                 unsafe {
@@ -65,6 +69,17 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                         Err(_) => 0,
                     }
                 }
+            })
+        },
+    )?;
+
+    linker.func_wrap_async(
+        "env",
+        "exit",
+        |mut caller: ProcessCaller, (code,): (i32,)| {
+            Box::new(async move {
+                let _ = caller.data_mut().join_handle.as_mut().unwrap().await;
+                caller.data_mut().exit_code = Some(code as u16);
             })
         },
     )?;
@@ -92,7 +107,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             };
 
             unsafe {
-                KERNEL.send_event(name, data, caller.data().pid(), to_pid as Pid);
+                KERNEL.send_event(name, data, caller.data().pid, to_pid as Pid);
             }
 
             0
@@ -105,7 +120,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         |caller: ProcessCaller, buf_ptr: i32| unsafe {
             let event = KERNEL.get_current_event();
             // WARNING: may cause an issue
-            let process = KERNEL.get_process_mut(caller.data().pid()).unwrap();
+            let process = KERNEL.get_process_mut(caller.data().pid).unwrap();
             process.set_memory(buf_ptr as usize, &event.data);
         },
     )?;
@@ -160,7 +175,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 };
 
                 KERNEL
-                    .get_process_mut(caller.data().pid())
+                    .get_process_mut(caller.data().pid)
                     .unwrap()
                     .set_memory(dest, src_proc.get_memory(src, len));
             }
@@ -178,7 +193,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             };
 
             unsafe {
-                if !KERNEL.set_process_name(caller.data().pid(), name) {
+                if !KERNEL.set_process_name(caller.data().pid, name) {
                     return -1;
                 }
             }
@@ -199,7 +214,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
 
             unsafe {
                 KERNEL
-                    .get_process_mut(caller.data().pid())
+                    .get_process_mut(caller.data().pid)
                     .unwrap()
                     .set_memory(buf_ptr as usize, bytes);
             }
@@ -226,7 +241,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "env",
         "set_active_framebuffer",
         |caller: ProcessCaller, framebuffer: i32| {
-            let pid = caller.data().pid();
+            let pid = caller.data().pid;
             unsafe {
                 KERNEL
                     .drawstate
