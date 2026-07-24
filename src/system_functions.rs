@@ -1,4 +1,7 @@
+use std::time::Duration;
+
 use tokio::task::yield_now;
+use tokio::time::sleep;
 use wasmtime::{Caller, Func, Linker};
 
 use crate::KERNEL;
@@ -83,6 +86,14 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             })
         },
     )?;
+
+    // Time
+
+    linker.func_wrap_async("env", "sleep", |_: ProcessCaller, (seconds,): (f64,)| {
+        Box::new(async move {
+            sleep(Duration::from_secs_f64(seconds)).await;
+        })
+    })?;
 
     // Inter-process communication
 
