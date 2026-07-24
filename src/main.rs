@@ -53,13 +53,11 @@ async fn main() -> wasmtime::Result<()> {
     let join_handle = spawn_local(async move {
         while !rl.window_should_close() {
             if kernel.root_exited() {
-                println!("Root exited!");
                 break;
             }
 
             kernel.update(&mut rl, &thread);
             kernel.upload_framebuffer();
-            println!("Updating");
 
             yield_now().await;
         }

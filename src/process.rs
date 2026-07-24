@@ -8,6 +8,7 @@ use wasmtime::{Func, Instance};
 
 use crate::draw;
 use crate::event::Event;
+use crate::kernel::Pid;
 use crate::ptr_cell::PtrCell;
 use crate::wasm_state::{KernelStore, WasmState};
 
@@ -30,6 +31,7 @@ fn get_memory_slice_mut<'a>(instance: &'a Instance, store: &'a mut KernelStore) 
 }
 
 pub struct Process {
+    pid: Pid,
     event_queue: Vec<Event>,
     event_handlers: HashMap<SymbolU32, Func>,
     wasm_state: WasmState,
@@ -37,8 +39,9 @@ pub struct Process {
 }
 
 impl Process {
-    pub fn new(wasm_state: WasmState) -> Self {
+    pub fn new(wasm_state: WasmState, pid: Pid) -> Self {
         Self {
+            pid,
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             wasm_state,
@@ -78,6 +81,14 @@ impl Process {
         let mut main_loop = Box::pin(run.call_async(&mut self.wasm_state.store, ()));
 
         loop {
+            self_cell
+                .get_mut()
+                .wasm_state
+                .store
+                .data_mut()
+                .get_mut()
+                .set_current_pid(self.pid);
+
             self_cell.get_mut().process_queue();
 
             let poll_result =

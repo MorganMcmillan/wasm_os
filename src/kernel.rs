@@ -120,16 +120,16 @@ impl Kernel {
             }
         };
 
-        let process = Process::new(wasm_state);
         // TODO: figure out better way to handle process ids
+        let pid = self.processes.len() as u16 + 1;
+        let process = Process::new(wasm_state, pid);
         self.processes.push(Some(process));
 
-        let pid = self.processes.len() as u16;
         Ok(pid)
     }
 
     pub fn get_process(&self, pid: Pid) -> Option<&Process> {
-        match self.processes.get((pid - 1) as usize) {
+        match self.processes.get(pid.saturating_sub(1) as usize) {
             Some(Some(process)) => Some(process),
             _ => None,
         }
@@ -140,6 +140,10 @@ impl Kernel {
             Some(Some(process)) => Some(process),
             _ => None,
         }
+    }
+
+    pub fn set_current_pid(&mut self, pid: Pid) {
+        self.current_pid = pid;
     }
 
     pub fn get_current_pid(&self) -> Pid {

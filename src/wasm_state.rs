@@ -7,10 +7,49 @@ use wasmtime::*;
 pub type KernelStore = Store<PtrCell<Kernel>>;
 type KernelCaller<'a> = Caller<'a, PtrCell<Kernel>>;
 
+#[allow(mismatched_lifetime_syntaxes)]
+fn get_memory(
+    caller: *const KernelCaller,
+    pid: Pid,
+    mem_ptr: i32,
+    mem_len: i32,
+) -> Result<&[u8], i32> {
+    unsafe {
+        let Some(process) = (*caller).data().get().get_process(pid) else {
+            return Err(1);
+        };
+        let process_ptr = process as *const Process;
+
+        let mem = (*process_ptr).get_memory(mem_ptr as usize, mem_len as usize);
+        Ok(mem)
+    }
+}
+
+#[allow(mismatched_lifetime_syntaxes)]
+fn get_str(caller: *const KernelCaller, pid: Pid, str_ptr: i32, str_len: i32) -> Result<&str, i32> {
+    let string = get_memory(caller, pid, str_ptr, str_len)?;
+    let Ok(string) = str::from_utf8(string) else {
+        return Err(2);
+    };
+    Ok(string)
+}
+
 /// Loads all core system functions into the program.
 /// TODO: allow drivers to register their own functions through this or a similar method.
 fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Result<()> {
     // Kernel methods
+
+    linker.func_wrap(
+        "env",
+        "debug_print",
+        |caller: KernelCaller, str_ptr: i32, str_len: i32| {
+            let pid = caller.data().get().get_current_pid();
+            if let Ok(string) = get_str(&caller, pid, str_ptr, str_len) {
+                println!("{string}");
+            }
+        },
+    )?;
+
     linker.func_wrap(
         "env",
         "send_event",
@@ -23,19 +62,14 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
          -> i32 {
             let pid = caller.data().get().get_current_pid();
 
-            let (name, data) = unsafe {
-                let Some(process) = caller.data().get().get_process(pid) else {
-                    return 1;
-                };
-                let process_ptr = process as *const Process;
+            let name = match get_str(&caller, pid, name_ptr, name_len) {
+                Ok(name) => name,
+                Err(e) => return e,
+            };
 
-                let name = (*process_ptr).get_memory(name_ptr as usize, name_len as usize);
-                let Ok(name) = str::from_utf8(name) else {
-                    return 2;
-                };
-
-                let data = (*process_ptr).get_memory(data_ptr as usize, data_len as usize);
-                (name, data)
+            let data = match get_memory(&caller, pid, data_ptr, data_len) {
+                Ok(d) => d,
+                Err(e) => return e,
             };
 
             caller

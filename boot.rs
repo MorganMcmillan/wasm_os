@@ -16,7 +16,12 @@ extern "C" {
 
     #[link_name = "yield_now"]
     fn yield_now();
+
+    #[link_name = "debug_print"]
+    fn debug_print(str_ptr: *const u8, str_len: i32);
 }
+
+const DBG_MESSAGE: &str = "Drawing within Wasm!";
 
 #[no_mangle]
 fn run() -> i32 {
@@ -24,6 +29,8 @@ fn run() -> i32 {
         set_active_framebuffer(&raw const FRAMEBUFFER as *const u8);
 
         loop {
+            debug_print(DBG_MESSAGE.as_ptr(), DBG_MESSAGE.len() as i32);
+
             let mx = get_mouse_x() as usize;
             let my = get_mouse_y() as usize;
 
