@@ -14,7 +14,7 @@ use crate::event::Event;
 use crate::event::EventData;
 use crate::input;
 use crate::process::Process;
-use crate::wasm_state::WasmState;
+use crate::wasm_state::WasmProcess;
 
 pub type Pid = u16;
 
@@ -32,7 +32,7 @@ pub struct Kernel {
     pub drawstate: draw::DrawState,
     pub mousestate: input::MouseState,
     // A sparse map of Pids to processes
-    pub processes: Vec<Option<Process>>,
+    pub processes: Vec<Option<WasmProcess>>,
     // The current pid of the running program
     current_pid: Pid,
     current_event: Option<NonNull<Event>>,
@@ -64,22 +64,24 @@ impl Kernel {
     pub async fn run_boot(&mut self) {
         let kptr = self as *mut Self;
         unsafe {
-            let root_pid = self.create_boot_process(kptr).await;
+            let root_pid = self.create_boot_process().await;
             let root = (*kptr).get_process_mut(root_pid).unwrap();
             let join_handle = task::spawn(root.run());
 
             self.get_process_mut(root_pid)
                 .unwrap()
+                .store
+                .data_mut()
                 .set_join_handle(join_handle);
         }
     }
 
-    async fn create_boot_process(&mut self, kptr: *mut Self) -> Pid {
-        let root_process = match self.create_process(kptr, USER_BOOT_PROCESS).await {
+    async fn create_boot_process(&mut self) -> Pid {
+        let root_process = match self.create_process(USER_BOOT_PROCESS).await {
             Err(CreateProcessError::FileNotFound) => {
-                match self.create_process(kptr, ROM_BOOT_PROCESS).await {
+                match self.create_process(ROM_BOOT_PROCESS).await {
                     Err(CreateProcessError::FileNotFound) => {
-                        self.create_process(kptr, BIOS_BOOT_PROCESS).await
+                        self.create_process(BIOS_BOOT_PROCESS).await
                     }
                     result => result,
                 }
@@ -96,11 +98,7 @@ impl Kernel {
         }
     }
 
-    pub async fn create_process(
-        &mut self,
-        kptr: *mut Self,
-        path: &str,
-    ) -> Result<Pid, CreateProcessError> {
+    pub async fn create_process(&mut self, path: &str) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
         }
@@ -114,8 +112,12 @@ impl Kernel {
             },
         };
 
+        // TODO: figure out better way to handle process ids
+        let pid = self.processes.len() as u16 + 1;
+        let process = Process::new(pid);
+
         // TODO: add ability to set kernel filesystem root
-        let wasm_state = match WasmState::new(binary, &self.engine, kptr).await {
+        let wasm_state = match WasmProcess::new(binary, &self.engine, process).await {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Wasm error: {:?}", e);
@@ -123,22 +125,19 @@ impl Kernel {
             }
         };
 
-        // TODO: figure out better way to handle process ids
-        let pid = self.processes.len() as u16 + 1;
-        let process = Process::new(wasm_state, pid);
-        self.processes.push(Some(process));
+        self.processes.push(Some(wasm_state));
 
         Ok(pid)
     }
 
-    pub fn get_process(&self, pid: Pid) -> Option<&Process> {
+    pub fn get_process(&self, pid: Pid) -> Option<&WasmProcess> {
         match self.processes.get((pid - 1) as usize) {
             Some(Some(process)) => Some(process),
             _ => None,
         }
     }
 
-    pub fn get_process_mut(&mut self, pid: Pid) -> Option<&mut Process> {
+    pub fn get_process_mut(&mut self, pid: Pid) -> Option<&mut WasmProcess> {
         match self.processes.get_mut((pid - 1) as usize) {
             Some(Some(process)) => Some(process),
             _ => None,
@@ -153,11 +152,11 @@ impl Kernel {
         self.current_pid
     }
 
-    pub fn get_current_process(&self) -> &Process {
+    pub fn get_current_process(&self) -> &WasmProcess {
         self.get_process(self.current_pid).unwrap()
     }
 
-    pub fn get_current_process_mut(&mut self) -> &mut Process {
+    pub fn get_current_process_mut(&mut self) -> &mut WasmProcess {
         self.get_process_mut(self.current_pid).unwrap()
     }
 
@@ -180,7 +179,6 @@ impl Kernel {
             if let Some((pid, address)) = (*kernel).drawstate.framebuffer_address {
                 let process = (*kernel).get_process(pid).unwrap();
                 let framebuffer = process.get_memory(address as usize, draw::FRAMEBUFFER_SIZE);
-                println!("Framebuffer: {:?}", framebuffer);
                 (*kernel).drawstate.upload_framebuffer(framebuffer);
             } else {
                 eprintln!("Warning: no framebuffer set!");
@@ -211,7 +209,7 @@ impl Kernel {
         let event = Event::new(copied_data, sender, interned_name);
 
         let receiver_process = self.get_process_mut(receiver).unwrap();
-        receiver_process.push_event(event);
+        receiver_process.store.data_mut().push_event(event);
     }
 
     pub fn set_current_event(&mut self, event_ptr: *mut Event) {

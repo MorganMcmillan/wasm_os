@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-static mut FRAMEBUFFER: [u8; 384 * 216] = [255; 384 * 216];
+static mut FRAMEBUFFER: [u8; 384 * 216] = [0; 384 * 216];
 
 #[link(wasm_import_module = "env")]
 extern "C" {
@@ -29,7 +29,14 @@ fn run() -> i32 {
         set_active_framebuffer(&raw const FRAMEBUFFER as *const u8);
 
         loop {
-            debug_print(DBG_MESSAGE.as_ptr(), DBG_MESSAGE.len() as i32);
+            let mx = get_mouse_x() as usize;
+            let my = get_mouse_y() as usize;
+
+            set_pixel(mx, my, 255);
+            set_pixel(mx + 1, my, 255);
+            set_pixel(mx, my + 1, 255);
+            set_pixel(mx + 1, my + 1, 255);
+
             yield_now();
         }
     }

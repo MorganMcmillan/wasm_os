@@ -55,7 +55,6 @@ impl DrawState {
         screen_width: i32,
         screen_height: i32,
     ) {
-        println!("Drawing framebuffer!");
         d.draw_texture_pro(
             &self.framebuffer_texture,
             Rectangle::new(

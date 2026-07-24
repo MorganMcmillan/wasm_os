@@ -17,6 +17,8 @@ mod process;
 mod ptr_cell;
 mod wasm_state;
 
+const FRAMERATE: u32 = 60;
+
 static mut KERNEL: OptionCell<Kernel> = const { OptionCell::none() };
 
 async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime::Result<Kernel> {
@@ -50,7 +52,7 @@ async fn main() -> wasmtime::Result<()> {
         .resizable()
         .build();
 
-    rl.set_target_fps(20);
+    rl.set_target_fps(FRAMERATE);
 
     unsafe {
         KERNEL = OptionCell::new(create_kernel(&mut rl, &thread).await?);
