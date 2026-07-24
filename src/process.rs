@@ -62,7 +62,6 @@ impl Process {
         self.event_handlers.insert(name, handler);
     }
 
-    // TODO: see if it's really worth removing handlers in programs.
     pub fn remove_event_handler(&mut self, name: SymbolU32) {
         self.event_handlers.remove(&name);
     }
@@ -116,10 +115,10 @@ impl Process {
         }
     }
 
-    fn process_event(&mut self, event: Event) {
+    fn process_event(&mut self, mut event: Event) {
         self.wasm_state
             .kernel_mut()
-            .set_current_event(&raw const event);
+            .set_current_event(&raw mut event);
 
         let sym = event.interned_name;
         if let Some(handler) = self.event_handlers.get(&sym) {
@@ -139,6 +138,7 @@ impl Process {
         &memory[address..(address + len)]
     }
 
+    /// Sets a slice of memory. The length of the slice is given by the lenght of the value
     pub fn set_memory(&mut self, address: usize, value: &[u8]) {
         let memory = get_memory_slice_mut(&self.wasm_state.instance, &mut self.wasm_state.store);
         let memory = &mut memory[address..];

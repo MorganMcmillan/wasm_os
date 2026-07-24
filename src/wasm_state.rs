@@ -158,6 +158,7 @@ fn load_system_functions(linker: &mut Linker<PtrCell<Kernel>>) -> wasmtime::Resu
                 .get_mut()
                 .drawstate
                 .set_framebuffer_address(pid, framebuffer as u32);
+            caller.data_mut().get_mut().test_data = 6767;
             println!("Called set_active_framebuffer.");
         },
     )?;

@@ -1,18 +1,23 @@
+#![allow(static_mut_refs)]
+
 use raylib::prelude::*;
 use tokio::task::{spawn_local, yield_now};
 use wasmtime::{Strategy::Cranelift, *};
 
 use crate::draw::DrawState;
+use crate::kernel::Kernel;
+use crate::option_cell::OptionCell;
 
 mod draw;
 mod event;
 mod input;
 mod kernel;
+mod option_cell;
 mod process;
 mod ptr_cell;
 mod wasm_state;
 
-use kernel::Kernel;
+static mut KERNEL: OptionCell<Kernel> = const { OptionCell::none() };
 
 async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime::Result<Kernel> {
     // Generate default texture image
@@ -47,45 +52,47 @@ async fn main() -> wasmtime::Result<()> {
 
     rl.set_target_fps(20);
 
-    let mut kernel = create_kernel(&mut rl, &thread).await?;
-    kernel.run_boot().await;
+    unsafe {
+        KERNEL = OptionCell::new(create_kernel(&mut rl, &thread).await?);
+        KERNEL.run_boot().await;
 
-    let join_handle = spawn_local(async move {
-        while !rl.window_should_close() {
-            if kernel.root_exited() {
-                break;
+        let join_handle = spawn_local(async move {
+            while !rl.window_should_close() {
+                if KERNEL.root_exited() {
+                    break;
+                }
+
+                let screen_width = rl.get_screen_width();
+                let screen_height = rl.get_screen_height();
+
+                KERNEL.update(&mut rl);
+                // println!("Test data kernel: {}!", kernel.test_data);
+                // println!(
+                //     "Test data boot: {}!",
+                //     kernel
+                //         .processes
+                //         .first()
+                //         .as_ref()
+                //         .unwrap()
+                //         .as_ref()
+                //         .unwrap()
+                //         .wasm_state
+                //         .kernel()
+                //         .test_data
+                // );
+                KERNEL.upload_framebuffer();
+
+                let mut d = rl.begin_drawing(&thread);
+                KERNEL
+                    .drawstate
+                    .draw_framebuffer(&mut d, screen_width, screen_height);
+
+                yield_now().await;
             }
+        });
 
-            let screen_width = rl.get_screen_width();
-            let screen_height = rl.get_screen_height();
-
-            kernel.update(&mut rl);
-            println!("Test data kernel: {}!", kernel.test_data);
-            println!(
-                "Test data boot: {}!",
-                kernel
-                    .processes
-                    .first()
-                    .as_ref()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .wasm_state
-                    .kernel()
-                    .test_data
-            );
-            kernel.upload_framebuffer();
-
-            let mut d = rl.begin_drawing(&thread);
-            kernel
-                .drawstate
-                .draw_framebuffer(&mut d, screen_width, screen_height);
-
-            yield_now().await;
-        }
-    });
-
-    let _ = join_handle.await;
+        let _ = join_handle.await;
+    }
 
     Ok(())
 }

@@ -1,4 +1,5 @@
 use std::io::ErrorKind::NotFound;
+use std::ptr::NonNull;
 
 use raylib::RaylibHandle;
 use raylib::ffi::KeyboardKey;
@@ -34,7 +35,7 @@ pub struct Kernel {
     pub processes: Vec<Option<Process>>,
     // The current pid of the running program
     current_pid: Pid,
-    current_event: Option<*const Event>,
+    current_event: Option<NonNull<Event>>,
     str_intern_state: StringInterner<StringBackend>,
 }
 
@@ -213,15 +214,15 @@ impl Kernel {
         receiver_process.push_event(event);
     }
 
-    pub fn set_current_event(&mut self, event_ptr: *const Event) {
-        self.current_event = Some(event_ptr);
+    pub fn set_current_event(&mut self, event_ptr: *mut Event) {
+        self.current_event = NonNull::new(event_ptr);
     }
 
     pub fn get_current_event(&self) -> &Event {
         unsafe {
-            &*self
-                .current_event
+            self.current_event
                 .expect("Attempted to call an event handler without any event data.")
+                .as_ref()
         }
     }
 
