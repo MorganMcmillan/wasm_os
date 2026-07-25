@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::io::ErrorKind::NotFound;
+use std::io::Read;
+use std::path::Path;
 use std::ptr::NonNull;
 
+use cap_std::ambient_authority;
 use raylib::RaylibHandle;
 use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
@@ -41,6 +44,8 @@ pub struct Kernel {
     current_pid: Pid,
     current_event: Option<NonNull<Event>>,
     interned_event_names: StringInterner<StringBackend>,
+    // The top-level directory for which programs can be executed from
+    ambient_dir: cap_std::fs::Dir,
 }
 
 unsafe impl Send for Kernel {}
@@ -50,8 +55,19 @@ const BIOS_BOOT_PROCESS: &str = "bios/boot.wasm";
 const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
+const APP_NAME: &str = "wasm_os";
+
 impl Kernel {
     pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
+        let root_dir = app_dirs2::app_root(
+            app_dirs2::AppDataType::UserData,
+            &app_dirs2::AppInfo {
+                name: APP_NAME,
+                author: "Morgan",
+            },
+        )
+        .expect("Could not create application directory.");
+
         Self {
             engine,
             drawstate,
@@ -61,6 +77,7 @@ impl Kernel {
             current_pid: 0,
             current_event: None,
             interned_event_names: StringInterner::new(),
+            ambient_dir: cap_std::fs::Dir::open_ambient_dir(root_dir, ambient_authority()).unwrap(),
         }
     }
 
@@ -125,6 +142,23 @@ impl Kernel {
         Ok(pid)
     }
 
+    fn read_file(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, CreateProcessError> {
+        let mut file = match self.ambient_dir.open(path.as_ref()) {
+            Ok(f) => f,
+            Err(e) => match e.kind() {
+                NotFound => return Err(CreateProcessError::FileNotFound),
+                _ => return Err(CreateProcessError::Other),
+            },
+        };
+
+        let mut bytes = Vec::with_capacity(1 << 12);
+        if file.read_to_end(&mut bytes).is_err() {
+            return Err(CreateProcessError::Other);
+        }
+
+        Ok(bytes)
+    }
+
     pub async fn create_process(
         &mut self,
         path: &str,
@@ -134,14 +168,15 @@ impl Kernel {
             return Err(CreateProcessError::IncorrectFileType);
         }
 
-        // TODO: prepend root directory to path
-        let binary = match std::fs::read(path) {
-            Ok(bin) => bin,
-            Err(e) => match e.kind() {
-                NotFound => return Err(CreateProcessError::FileNotFound),
-                _ => return Err(CreateProcessError::Other),
-            },
-        };
+        // let binary = match std::fs::read(path) {
+        //     Ok(bin) => bin,
+        //     Err(e) => match e.kind() {
+        //         NotFound => return Err(CreateProcessError::FileNotFound),
+        //         _ => return Err(CreateProcessError::Other),
+        //     },
+        // };
+
+        let binary = self.read_file(path)?;
 
         // TODO: figure out better way to handle process ids
         let pid = self.processes.len() as u16 + 1;
