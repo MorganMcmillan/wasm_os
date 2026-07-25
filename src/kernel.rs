@@ -12,6 +12,7 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU32;
 use tokio::task;
+use wasmtime::Config;
 use wasmtime::Engine;
 
 use crate::KERNEL;
@@ -55,21 +56,13 @@ const BIOS_BOOT_PROCESS: &str = "bios/boot.wasm";
 const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
-const APP_NAME: &str = "wasm_os";
-
 impl Kernel {
-    pub fn new(engine: Engine, drawstate: draw::DrawState) -> Self {
-        let root_dir = app_dirs2::app_root(
-            app_dirs2::AppDataType::UserData,
-            &app_dirs2::AppInfo {
-                name: APP_NAME,
-                author: "Morgan",
-            },
-        )
-        .expect("Could not create application directory.");
+    pub fn new(root_dir: impl AsRef<Path>, drawstate: draw::DrawState) -> Self {
+        let mut config = Config::new();
+        config.strategy(wasmtime::Strategy::Cranelift);
 
         Self {
-            engine,
+            engine: Engine::new(&config).unwrap(),
             drawstate,
             mousestate: input::MouseState::new(),
             processes: Vec::new(),

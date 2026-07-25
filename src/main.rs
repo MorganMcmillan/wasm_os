@@ -2,7 +2,6 @@
 
 use raylib::prelude::*;
 use tokio::task::{spawn_local, yield_now};
-use wasmtime::{Strategy::Cranelift, *};
 
 use crate::draw::DrawState;
 use crate::kernel::Kernel;
@@ -18,6 +17,7 @@ mod ptr_cell;
 mod system_functions;
 mod wasm_process;
 
+const APP_NAME: &str = "wasm_os";
 const FRAMERATE: u32 = 60;
 
 static mut KERNEL: OptionCell<Kernel> = const { OptionCell::none() };
@@ -34,12 +34,17 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
     let img = unsafe { Image::from_raw(img) };
     let texture = rl.load_texture_from_image(thread, &img).unwrap();
 
-    let mut config = Config::new();
-    config.strategy(Cranelift);
-    let engine = Engine::new(&config)?;
+    let root_dir = app_dirs2::app_root(
+        app_dirs2::AppDataType::UserData,
+        &app_dirs2::AppInfo {
+            name: APP_NAME,
+            author: "Morgan",
+        },
+    )
+    .expect("Could not create application directory.");
     let drawstate = DrawState::new(texture);
 
-    Ok(Kernel::new(engine, drawstate))
+    Ok(Kernel::new(root_dir, drawstate))
 }
 
 #[tokio::main(flavor = "local")]
