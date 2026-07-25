@@ -1,6 +1,10 @@
 use raylib::RaylibHandle;
 
-use crate::draw;
+use crate::{
+    KERNEL,
+    driver::{Driver, draw},
+    system_functions::ProcessCaller,
+};
 
 /// Normalizes a given coordinate to be within `normalized_length`.
 fn normalize_coordinate(x: i32, length: i32, normalized_length: i32) -> u16 {
@@ -17,8 +21,25 @@ impl MouseState {
     pub fn new() -> Self {
         Self { x: 0, y: 0 }
     }
+}
 
-    pub fn update(&mut self, rl: &mut RaylibHandle) {
+impl Driver for MouseState {
+    fn register_functions(
+        &self,
+        linker: &mut wasmtime::Linker<crate::process::Process>,
+    ) -> wasmtime::Result<()> {
+        linker.func_wrap("env", "get_mouse_x", |_: ProcessCaller| unsafe {
+            KERNEL.mousestate.x as i32
+        })?;
+
+        linker.func_wrap("env", "get_mouse_y", |_: ProcessCaller| unsafe {
+            KERNEL.mousestate.y as i32
+        })?;
+
+        Ok(())
+    }
+
+    fn update(&mut self, rl: &mut RaylibHandle) {
         let screen_width = rl.get_screen_width();
         let screen_height = rl.get_screen_height();
         let mx = rl.get_mouse_x();

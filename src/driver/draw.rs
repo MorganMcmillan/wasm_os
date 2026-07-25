@@ -1,4 +1,4 @@
-use crate::kernel::Pid;
+use crate::{KERNEL, driver::Driver, kernel::Pid, system_functions::ProcessCaller};
 use raylib::{
     drawing::{RaylibDraw, RaylibDrawHandle},
     ffi::{Color, Vector2},
@@ -71,4 +71,29 @@ impl DrawState {
             Color::WHITE,
         );
     }
+}
+
+impl Driver for DrawState {
+    fn register_functions(
+        &self,
+        linker: &mut wasmtime::Linker<crate::process::Process>,
+    ) -> wasmtime::Result<()> {
+        // Draw state
+        linker.func_wrap(
+            "env",
+            "set_active_framebuffer",
+            |caller: ProcessCaller, framebuffer: i32| {
+                let pid = caller.data().pid;
+                unsafe {
+                    KERNEL
+                        .drawstate
+                        .set_framebuffer_address(pid, framebuffer as u32);
+                }
+            },
+        )?;
+
+        Ok(())
+    }
+
+    fn update(&mut self, _rl: &mut raylib::prelude::RaylibHandle) {}
 }

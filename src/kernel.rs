@@ -16,10 +16,10 @@ use wasmtime::Config;
 use wasmtime::Engine;
 
 use crate::KERNEL;
-use crate::draw;
+use crate::driver;
+use crate::driver::Driver as _;
 use crate::event::Event;
 use crate::event::EventData;
-use crate::input;
 use crate::process::Process;
 use crate::wasm_process::WasmProcess;
 
@@ -35,8 +35,8 @@ pub enum CreateProcessError {
 
 pub struct Kernel {
     engine: Engine,
-    pub drawstate: draw::DrawState,
-    pub mousestate: input::MouseState,
+    pub drawstate: driver::draw::DrawState,
+    pub mousestate: driver::input::MouseState,
     // A sparse map of Pids to processes
     pub processes: Vec<Option<WasmProcess>>,
     // A map of process names to Pids
@@ -57,14 +57,14 @@ const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
 impl Kernel {
-    pub fn new(root_dir: impl AsRef<Path>, drawstate: draw::DrawState) -> Self {
+    pub fn new(root_dir: impl AsRef<Path>, drawstate: driver::draw::DrawState) -> Self {
         let mut config = Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
 
         Self {
             engine: Engine::new(&config).unwrap(),
             drawstate,
-            mousestate: input::MouseState::new(),
+            mousestate: driver::input::MouseState::new(),
             processes: Vec::new(),
             process_names: HashMap::new(),
             current_pid: 0,
@@ -76,6 +76,17 @@ impl Kernel {
 
     pub fn root_exited(&self) -> bool {
         !matches!(self.processes.first(), Some(Some(_)))
+    }
+
+    // Loads each driver's functions.
+    pub fn load_driver_functions(
+        &self,
+        linker: &mut wasmtime::Linker<crate::process::Process>,
+    ) -> wasmtime::Result<()> {
+        self.drawstate.register_functions(linker)?;
+        self.mousestate.register_functions(linker)?;
+
+        Ok(())
     }
 
     pub async fn run_boot(&mut self) {
@@ -161,15 +172,15 @@ impl Kernel {
             return Err(CreateProcessError::IncorrectFileType);
         }
 
-        // let binary = match std::fs::read(path) {
-        //     Ok(bin) => bin,
-        //     Err(e) => match e.kind() {
-        //         NotFound => return Err(CreateProcessError::FileNotFound),
-        //         _ => return Err(CreateProcessError::Other),
-        //     },
-        // };
+        let binary = match std::fs::read(path) {
+            Ok(bin) => bin,
+            Err(e) => match e.kind() {
+                NotFound => return Err(CreateProcessError::FileNotFound),
+                _ => return Err(CreateProcessError::Other),
+            },
+        };
 
-        let binary = self.read_file(path)?;
+        // let binary = self.read_file(path)?;
 
         // TODO: figure out better way to handle process ids
         let pid = self.processes.len() as u16 + 1;
@@ -249,7 +260,8 @@ impl Kernel {
         unsafe {
             if let Some((pid, address)) = (*kernel).drawstate.framebuffer_address {
                 let process = (*kernel).get_process(pid).unwrap();
-                let framebuffer = process.get_memory(address as usize, draw::FRAMEBUFFER_SIZE);
+                let framebuffer =
+                    process.get_memory(address as usize, driver::draw::FRAMEBUFFER_SIZE);
                 (*kernel).drawstate.upload_framebuffer(framebuffer);
             } else {
                 eprintln!("Warning: no framebuffer set!");

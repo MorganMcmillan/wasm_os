@@ -9,7 +9,7 @@ use crate::KERNEL;
 use crate::kernel::Pid;
 use crate::process::Process;
 
-type ProcessCaller<'a> = Caller<'a, Process>;
+pub type ProcessCaller<'a> = Caller<'a, Process>;
 
 #[allow(mismatched_lifetime_syntaxes)]
 fn get_memory(caller: *const ProcessCaller, mem_ptr: i32, mem_len: i32) -> Result<&[u8], i32> {
@@ -264,29 +264,6 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             unsafe { KERNEL.get_pid_by_name(name) as i32 }
         },
     )?;
-
-    // Draw state
-    linker.func_wrap(
-        "env",
-        "set_active_framebuffer",
-        |caller: ProcessCaller, framebuffer: i32| {
-            let pid = caller.data().pid;
-            unsafe {
-                KERNEL
-                    .drawstate
-                    .set_framebuffer_address(pid, framebuffer as u32);
-            }
-        },
-    )?;
-
-    // Input
-    linker.func_wrap("env", "get_mouse_x", |_: ProcessCaller| unsafe {
-        KERNEL.mousestate.x as i32
-    })?;
-
-    linker.func_wrap("env", "get_mouse_y", |_: ProcessCaller| unsafe {
-        KERNEL.mousestate.y as i32
-    })?;
 
     // Process
 

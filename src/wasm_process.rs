@@ -50,6 +50,10 @@ impl WasmProcess {
             return Err(e);
         };
 
+        unsafe {
+            KERNEL.load_driver_functions(&mut linker)?;
+        }
+
         // All wasm objects operate in the context of a store.
         // A store is used to store host-specific data of a given type.
         let mut store = Store::new(engine, process);

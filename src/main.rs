@@ -3,13 +3,12 @@
 use raylib::prelude::*;
 use tokio::task::{spawn_local, yield_now};
 
-use crate::draw::DrawState;
+use crate::driver::draw::DrawState;
 use crate::kernel::Kernel;
 use crate::option_cell::OptionCell;
 
-mod draw;
+mod driver;
 mod event;
-mod input;
 mod kernel;
 mod option_cell;
 mod process;
@@ -26,8 +25,8 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
     // Generate default texture image
     let img = unsafe {
         raylib::ffi::GenImageColor(
-            draw::FRAMEBUFFER_WIDTH as i32,
-            draw::FRAMEBUFFER_HEIGHT as i32,
+            driver::draw::FRAMEBUFFER_WIDTH as i32,
+            driver::draw::FRAMEBUFFER_HEIGHT as i32,
             Color::RED,
         )
     };
@@ -51,8 +50,8 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
 async fn main() -> wasmtime::Result<()> {
     let (mut rl, thread) = raylib::init()
         .size(
-            draw::FRAMEBUFFER_WIDTH as i32 * 2,
-            draw::FRAMEBUFFER_HEIGHT as i32 * 2,
+            driver::draw::FRAMEBUFFER_WIDTH as i32 * 2,
+            driver::draw::FRAMEBUFFER_HEIGHT as i32 * 2,
         )
         .title("WasmOS Test")
         .resizable()
