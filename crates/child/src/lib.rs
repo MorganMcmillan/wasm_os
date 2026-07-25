@@ -15,12 +15,14 @@ extern "C" {
         pid: i32,
     ) -> i32;
 
-    #[link_name = "send_event"]
+    #[link_name = "get_parent_pid"]
     fn get_parent_pid() -> i32;
 }
 
 fn send_event_safe(name: &str, data: &[u8], pid: i32) {
-    send_event(name.as_ptr, name.len(), data.as_ptr(), data.len(), pid);
+    unsafe {
+        send_event(name.as_ptr(), name.len(), data.as_ptr(), data.len(), pid);
+    }
 }
 
 #[no_mangle]
