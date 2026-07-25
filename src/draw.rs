@@ -35,6 +35,8 @@ impl DrawState {
         self.framebuffer_address = Some((pid, mem_address));
     }
 
+    /// Uploads the process' framebuffer into the framebuffer texture, mapping each byte to
+    /// rgba8888.
     pub fn upload_framebuffer(&mut self, framebuffer: &[u8]) {
         let mut fb_rgba8888 = [0u8; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 4];
         for (i, pixel) in framebuffer.iter().enumerate() {

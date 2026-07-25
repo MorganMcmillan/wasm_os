@@ -117,7 +117,8 @@ impl WasmProcess {
 
             let sym = event.interned_name;
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
-                let result = handler.call(&mut self.store, &[], &mut []);
+                let result =
+                    handler.call(&mut self.store, &[Val::I32(event.length as i32)], &mut []);
                 if let Err(e) = result {
                     let event_name = KERNEL.get_event_name(sym);
                     eprintln!("Error in event handler {}: {}", event_name, e);

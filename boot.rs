@@ -25,7 +25,7 @@ extern "C" {
     fn get_event_data(buf_ptr: *mut u8, buf_len: i32);
 }
 
-fn set_color() {
+fn set_color(_: i32) {
     let color_data: [u8; 1] = [0];
     get_event_data(&color_data, 1);
     COLOR = color_data[0];
