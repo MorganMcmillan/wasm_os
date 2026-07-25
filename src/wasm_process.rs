@@ -78,7 +78,7 @@ impl WasmProcess {
                 KERNEL.set_current_pid(self_cell.get().store.data().pid);
             }
 
-            self_cell.get_mut().process_queue();
+            self_cell.get_mut().process_queue().await;
 
             let poll_result =
                 Future::poll(main_loop.as_mut(), &mut Context::from_waker(Waker::noop()));
@@ -101,23 +101,25 @@ impl WasmProcess {
         }
     }
 
-    fn process_queue(&mut self) {
+    async fn process_queue(&mut self) {
         let mut old_event_queue = Vec::new();
         std::mem::swap(&mut old_event_queue, &mut self.store.data_mut().event_queue);
 
         for event in old_event_queue {
-            self.process_event(event);
+            self.process_event(event).await;
         }
     }
 
-    fn process_event(&mut self, mut event: Event) {
+    async fn process_event(&mut self, mut event: Event) {
         unsafe {
             KERNEL.set_current_event(&raw mut event);
             let self_ptr = self as *mut Self;
 
             let sym = event.interned_name;
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
-                let result = handler.call(&mut self.store, (event.length as i32,));
+                let result = handler
+                    .call_async(&mut self.store, (event.length as i32,))
+                    .await;
                 if let Err(e) = result {
                     let event_name = KERNEL.get_event_name(sym);
                     eprintln!("Error in event handler {}: {}", event_name, e);

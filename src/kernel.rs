@@ -120,6 +120,8 @@ impl Kernel {
             .data_mut()
             .set_join_handle(join_handle);
 
+        println!("Spawned process '{path}'");
+
         Ok(pid)
     }
 

@@ -1,8 +1,5 @@
-#![no_std]
-#![no_main]
-
 #[link(wasm_import_module = "env")]
-extern "C" {
+unsafe extern "C" {
     #[link_name = "sleep"]
     fn sleep(seconds: f64);
 
@@ -21,19 +18,27 @@ extern "C" {
 
 fn send_event_safe(name: &str, data: &[u8], pid: i32) {
     unsafe {
-        send_event(name.as_ptr(), name.len(), data.as_ptr(), data.len(), pid);
+        send_event(
+            name.as_ptr(),
+            name.len() as i32,
+            data.as_ptr(),
+            data.len() as i32,
+            pid,
+        );
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn run() -> i32 {
-    let parent_pid = get_parent_pid();
-    loop {
-        send_event_safe("set_color", &[255], parent_pid);
-        sleep(1.0);
-        send_event_safe("set_color", &[80], parent_pid);
-        sleep(1.0);
-        send_event_safe("set_color", &[127], parent_pid);
-        sleep(1.0);
+    unsafe {
+        let parent_pid = get_parent_pid();
+        loop {
+            send_event_safe("set_color", &[255], parent_pid);
+            sleep(1.0);
+            send_event_safe("set_color", &[80], parent_pid);
+            sleep(1.0);
+            send_event_safe("set_color", &[127], parent_pid);
+            sleep(1.0);
+        }
     }
 }

@@ -20,6 +20,13 @@ unsafe extern "C" {
 
     #[link_name = "get_event_data"]
     fn get_event_data(buf_ptr: *mut u8, buf_len: i32);
+
+    #[link_name = "spawn"]
+    fn extern_spawn(path_ptr: *const u8, path_len: i32) -> i32;
+}
+
+fn spawn(path: &str) -> i32 {
+    unsafe { extern_spawn(path.as_ptr(), path.len() as i32) }
 }
 
 #[unsafe(no_mangle)]
@@ -36,6 +43,8 @@ extern "C" fn set_color(_: i32) {
 #[unsafe(no_mangle)]
 fn run() -> i32 {
     unsafe {
+        spawn("child.wasm");
+
         set_active_framebuffer(&raw const FRAMEBUFFER as *const u8);
         let name = "set_color";
         add_event_handler(name.as_ptr(), name.len() as i32);
