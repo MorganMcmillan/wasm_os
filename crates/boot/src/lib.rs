@@ -16,7 +16,7 @@ unsafe extern "C" {
     fn yield_now();
 
     #[link_name = "add_event_handler"]
-    fn add_event_handler(name_ptr: *const u8, name_len: i32, handler: extern "C" fn(i32)) -> i32;
+    fn add_event_handler(name_ptr: *const u8, name_len: i32) -> i32;
 
     #[link_name = "get_event_data"]
     fn get_event_data(buf_ptr: *mut u8, buf_len: i32);
@@ -38,7 +38,7 @@ fn run() -> i32 {
     unsafe {
         set_active_framebuffer(&raw const FRAMEBUFFER as *const u8);
         let name = "set_color";
-        add_event_handler(name.as_ptr(), name.len() as i32, set_color);
+        add_event_handler(name.as_ptr(), name.len() as i32);
 
         loop {
             let mx = get_mouse_x() as usize;

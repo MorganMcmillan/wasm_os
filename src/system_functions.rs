@@ -154,26 +154,17 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
     linker.func_wrap(
         "env",
         "add_event_handler",
-        |mut caller: ProcessCaller, name_ptr: i32, name_len: i32, handler: i32| -> i32 {
-            println!("Got function pointer {handler}");
-
+        |mut caller: ProcessCaller, name_ptr: i32, name_len: i32| -> i32 {
             let name = match get_str(&caller, name_ptr, name_len) {
                 Ok(n) => n,
                 Err(e) => return e,
             };
             let interned_name = unsafe { KERNEL.intern_event_name(name) };
 
-            let table = caller
-                .get_export("__indirect_function_table")
+            let handler = caller
+                .get_export(name)
                 .unwrap()
-                .into_table()
-                .unwrap();
-
-            let handler = table
-                .get(&mut caller, handler as u64)
-                .unwrap()
-                .as_func()
-                .unwrap()
+                .into_func()
                 .unwrap()
                 .typed::<(i32,), ()>(&caller)
                 .unwrap();
