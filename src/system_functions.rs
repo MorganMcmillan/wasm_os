@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::task::yield_now;
 use tokio::time::sleep;
-use wasmtime::{Caller, Func, Linker};
+use wasmtime::{Caller, Linker};
 
 use crate::KERNEL;
 use crate::kernel::Pid;
@@ -155,23 +155,27 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "env",
         "add_event_handler",
         |mut caller: ProcessCaller, name_ptr: i32, name_len: i32, handler: i32| -> i32 {
+            println!("Got function pointer {handler}");
+
             let name = match get_str(&caller, name_ptr, name_len) {
                 Ok(n) => n,
                 Err(e) => return e,
             };
             let interned_name = unsafe { KERNEL.intern_event_name(name) };
 
-            // I hope I typed this right.
             let table = caller
                 .get_export("__indirect_function_table")
                 .unwrap()
                 .into_table()
                 .unwrap();
-            let &handler = table
+
+            let handler = table
                 .get(&mut caller, handler as u64)
                 .unwrap()
                 .as_func()
                 .unwrap()
+                .unwrap()
+                .typed::<(i32,), ()>(&caller)
                 .unwrap();
 
             caller.data_mut().add_event_handler(interned_name, handler);

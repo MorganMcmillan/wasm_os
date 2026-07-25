@@ -22,6 +22,7 @@ unsafe extern "C" {
     fn get_event_data(buf_ptr: *mut u8, buf_len: i32);
 }
 
+#[unsafe(no_mangle)]
 extern "C" fn set_color(_: i32) {
     let mut color_data: [u8; 1] = [0];
     unsafe {
