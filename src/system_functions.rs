@@ -131,11 +131,18 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
     linker.func_wrap(
         "env",
         "get_event_data",
-        |caller: ProcessCaller, buf_ptr: i32| unsafe {
+        |caller: ProcessCaller, buf_ptr: i32, buf_len: i32| unsafe {
+            let buf_ptr = buf_ptr as usize;
+            let buf_len = buf_len as usize;
+
             let event = KERNEL.get_current_event();
             // WARNING: may cause an issue
             let process = KERNEL.get_process_mut(caller.data().pid).unwrap();
-            process.set_memory(buf_ptr as usize, &event.data);
+            if event.data.len() < buf_len {
+                process.set_memory(buf_ptr, &event.data);
+            } else {
+                process.set_memory(buf_ptr, &event.data[..buf_len]);
+            }
         },
     )?;
 
@@ -147,12 +154,25 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
     linker.func_wrap(
         "env",
         "add_event_handler",
-        |mut caller: ProcessCaller, name_ptr: i32, name_len: i32, handler: Func| -> i32 {
+        |mut caller: ProcessCaller, name_ptr: i32, name_len: i32, handler: i32| -> i32 {
             let name = match get_str(&caller, name_ptr, name_len) {
                 Ok(n) => n,
                 Err(e) => return e,
             };
             let interned_name = unsafe { KERNEL.intern_event_name(name) };
+
+            // I hope I typed this right.
+            let table = caller
+                .get_export("__indirect_function_table")
+                .unwrap()
+                .into_table()
+                .unwrap();
+            let &handler = table
+                .get(&mut caller, handler as u64)
+                .unwrap()
+                .as_func()
+                .unwrap()
+                .unwrap();
 
             caller.data_mut().add_event_handler(interned_name, handler);
             0

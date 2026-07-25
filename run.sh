@@ -1,2 +1,2 @@
 #!/bin/bash
-rustc boot.rs --target wasm32-unknown-unknown && cargo run
+cp crates/boot/target/wasm32-unknown-unknown/debug/boot.wasm boot.wasm && cargo run

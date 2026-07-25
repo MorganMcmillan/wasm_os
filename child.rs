@@ -27,11 +27,11 @@ fn send_event_safe(name: &str, data: &[u8], pid: i32) {
 fn run() -> i32 {
     let parent_pid = get_parent_pid();
     loop {
-        send_event("set_color", &[255], parent_pid);
+        send_event_safe("set_color", &[255], parent_pid);
         sleep(1.0);
-        send_event("set_color", &[80], parent_pid);
+        send_event_safe("set_color", &[80], parent_pid);
         sleep(1.0);
-        send_event("set_color", &[127], parent_pid);
+        send_event_safe("set_color", &[127], parent_pid);
         sleep(1.0);
     }
 }
