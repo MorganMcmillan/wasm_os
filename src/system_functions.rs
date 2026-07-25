@@ -1,9 +1,9 @@
+use std::io::{Write, stdout};
 use std::time::Duration;
 
 use tokio::task::yield_now;
 use tokio::time::sleep;
 use wasmtime::StoreContextMut;
-use wasmtime::component::{WasmList, WasmStr};
 
 use crate::KERNEL;
 use crate::kernel::{Pid, ProcessContext, ProcessLinker};
@@ -16,11 +16,13 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
 
     linker.func_wrap(
         "debug-print",
-        |ctx: StoreContextMut<Process>, (contents,): (WasmStr,)| {
-            if let Ok(contents) = contents.to_str(&ctx) {
-                println!("{contents}");
+        |ctx: StoreContextMut<Process>, bytes_ptr: i32, bytes_len: i32| match get_bytes(
+            &ctx, bytes_ptr, bytes_len,
+        ) {
+            Ok(bytes) => {
+                stdout().write_all(bytes);
             }
-            Ok(())
+            Err(_) => return -1,
         },
     )?;
 
