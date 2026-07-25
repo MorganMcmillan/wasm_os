@@ -31,6 +31,7 @@ fn get_memory_slice_mut<'a>(instance: &'a Instance, store: &'a mut ProcessStore)
     memory.data_mut(store)
 }
 
+/// Represents the actual running process, including its memory and functions
 pub struct WasmProcess {
     pub instance: Instance,
     pub store: ProcessStore,

@@ -40,7 +40,7 @@ pub struct Kernel {
     // The current pid of the running program
     current_pid: Pid,
     current_event: Option<NonNull<Event>>,
-    str_intern_state: StringInterner<StringBackend>,
+    interned_event_names: StringInterner<StringBackend>,
 }
 
 unsafe impl Send for Kernel {}
@@ -60,7 +60,7 @@ impl Kernel {
             process_names: HashMap::new(),
             current_pid: 0,
             current_event: None,
-            str_intern_state: StringInterner::new(),
+            interned_event_names: StringInterner::new(),
         }
     }
 
@@ -230,7 +230,7 @@ impl Kernel {
     // Events
 
     pub fn intern_event_name(&mut self, name: &str) -> SymbolU32 {
-        self.str_intern_state.get_or_intern(name)
+        self.interned_event_names.get_or_intern(name)
     }
 
     pub fn send_event(&mut self, event_name: &str, event_data: &[u8], sender: Pid, receiver: Pid) {
@@ -241,13 +241,13 @@ impl Kernel {
                 event_data.len()
             );
         }
-        let interned_name = self.str_intern_state.get_or_intern(event_name);
+        let interned_name = self.interned_event_names.get_or_intern(event_name);
         let mut copied_data = [0u8; size_of::<EventData>()];
         for (i, &byte) in event_data.iter().enumerate() {
             copied_data[i] = byte;
         }
 
-        let event = Event::new(copied_data, sender, interned_name);
+        let event = Event::new(copied_data, event_data.len() as u16, sender, interned_name);
 
         let receiver_process = self.get_process_mut(receiver).unwrap();
         receiver_process.store.data_mut().push_event(event);
@@ -266,7 +266,7 @@ impl Kernel {
     }
 
     pub fn get_event_name(&self, interned_name: SymbolU32) -> &str {
-        self.str_intern_state
+        self.interned_event_names
             .resolve(interned_name)
             .unwrap_or("NO_EVENT_NAME")
     }

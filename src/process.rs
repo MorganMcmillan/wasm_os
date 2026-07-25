@@ -11,8 +11,6 @@ use crate::kernel::Pid;
 
 /// A process represents the state of a running Webassembly process.
 pub struct Process {
-    // TODO: Add exit code that gets set when the process exits
-    // Along with a thing to check if the process has exited (maybe an option around the exit code)
     pub pid: Pid,
     pub parent_pid: Pid,
     pub exit_code: Option<u16>,
@@ -20,7 +18,6 @@ pub struct Process {
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, Func>,
     pub join_handle: Option<JoinHandle<i32>>,
-    // TODO: Add child processes
     pub label: Box<str>,
 }
 

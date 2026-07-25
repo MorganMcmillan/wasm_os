@@ -2,6 +2,7 @@
 #![no_main]
 
 static mut FRAMEBUFFER: [u8; 384 * 216] = [0; 384 * 216];
+static mut COLOR: u8 = 255;
 
 #[link(wasm_import_module = "env")]
 extern "C" {
@@ -17,8 +18,17 @@ extern "C" {
     #[link_name = "yield_now"]
     fn yield_now();
 
-    #[link_name = "debug_print"]
-    fn debug_print(str_ptr: *const u8, str_len: i32);
+    #[link_name = "add_event_handler"]
+    fn add_event_handler(name_ptr: *const u8, name_len: i32, handler: fn());
+
+    #[link_name = "get_event_data"]
+    fn get_event_data(buf_ptr: *mut u8, buf_len: i32);
+}
+
+fn set_color() {
+    let color_data: [u8; 1] = [0];
+    get_event_data(&color_data, 1);
+    COLOR = color_data[0];
 }
 
 const DBG_MESSAGE: &str = "Drawing within Wasm!";

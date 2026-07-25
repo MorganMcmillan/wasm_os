@@ -1,3 +1,4 @@
+use std::io::{Write, stdout};
 use std::time::Duration;
 
 use tokio::task::yield_now;
@@ -38,8 +39,9 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "env",
         "debug_print",
         |caller: ProcessCaller, str_ptr: i32, str_len: i32| {
-            if let Ok(string) = get_str(&caller, str_ptr, str_len) {
-                println!("{string}");
+            if let Ok(bytes) = get_memory(&caller, str_ptr, str_len) {
+                // Is okay if it fails (although an error code would be nice)
+                let _ = stdout().write_all(bytes);
             }
         },
     )?;
@@ -81,6 +83,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "exit",
         |mut caller: ProcessCaller, (code,): (i32,)| {
             Box::new(async move {
+                // Await join handle to end program execution.
                 let _ = caller.data_mut().join_handle.as_mut().unwrap().await;
                 caller.data_mut().exit_code = Some(code as u16);
             })
