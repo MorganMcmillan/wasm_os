@@ -75,6 +75,22 @@ impl Process {
     pub fn remove_event_handler(&mut self, name: SymbolU32) {
         self.event_handlers.remove(&name);
     }
+
+    pub fn add_driver_state(&mut self, driver_id: usize, state: Box<dyn Any + Send>) {
+        self.driver_states.insert(driver_id, state);
+    }
+
+    pub fn get_driver_state<T: Any + Send>(&self, driver_id: usize) -> Option<&T> {
+        self.driver_states
+            .get(&driver_id)
+            .and_then(|state| state.downcast_ref::<T>())
+    }
+
+    pub fn get_driver_state_mut<T: Any + Send>(&mut self, driver_id: usize) -> Option<&mut T> {
+        self.driver_states
+            .get_mut(&driver_id)
+            .and_then(|state| state.downcast_mut::<T>())
+    }
 }
 
 impl WasiView for Process {
