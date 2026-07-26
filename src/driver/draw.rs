@@ -1,7 +1,7 @@
 use crate::{
     KERNEL,
     driver::Driver,
-    kernel::{Pid, ProcessContext, ProcessLinker},
+    kernel::{ProcessContext, ProcessLinker},
 };
 use raylib::{
     drawing::{RaylibDraw, RaylibDrawHandle},
@@ -9,6 +9,7 @@ use raylib::{
     math::Rectangle,
     texture::{RaylibTexture2D, Texture2D},
 };
+use wasmtime::component::WasmList;
 
 pub const FRAMEBUFFER_WIDTH: usize = 384;
 pub const FRAMEBUFFER_HEIGHT: usize = 216;
@@ -23,7 +24,6 @@ fn byte_to_rgb(byte: u8) -> (u8, u8, u8) {
 }
 
 pub struct DrawState {
-    pub framebuffer_address: Option<(Pid, u32)>,
     pub framebuffer_texture: Texture2D,
     driver_id: usize,
 }
@@ -31,20 +31,25 @@ pub struct DrawState {
 impl DrawState {
     pub fn new(texture: Texture2D) -> Self {
         Self {
-            framebuffer_address: None,
             framebuffer_texture: texture,
             driver_id: 0,
         }
     }
 
-    pub fn set_framebuffer_address(&mut self, pid: Pid, mem_address: u32) {
-        self.framebuffer_address = Some((pid, mem_address));
-    }
-
     /// Uploads the process' framebuffer into the framebuffer texture, mapping each byte to
     /// rgba8888.
-    pub fn upload_framebuffer(&mut self, framebuffer: &[u8]) {
-        let mut fb_rgba8888 = [0u8; FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT * 4];
+    pub fn upload_framebuffer(&mut self, mut framebuffer: &[u8]) {
+        if framebuffer.len() != FRAMEBUFFER_SIZE {
+            eprintln!(
+                "Warning: provided framebuffer's size is not as expected: got {}",
+                framebuffer.len()
+            );
+            if framebuffer.len() > FRAMEBUFFER_SIZE {
+                framebuffer = &framebuffer[..FRAMEBUFFER_SIZE];
+            }
+        }
+
+        let mut fb_rgba8888 = [0u8; FRAMEBUFFER_SIZE * 4];
         for (i, pixel) in framebuffer.iter().enumerate() {
             let (r, g, b) = byte_to_rgb(*pixel);
             fb_rgba8888[i * 4] = r;
@@ -80,16 +85,23 @@ impl DrawState {
 }
 
 impl Driver for DrawState {
+    fn accept_id(&mut self, id: usize) {
+        self.driver_id = id;
+    }
+
+    fn get_id(&self) -> usize {
+        self.driver_id
+    }
+
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
         let id = self.driver_id;
 
         linker.func_wrap(
-            "set_active_framebuffer",
-            move |caller: ProcessContext, (framebuffer,): (i32,)| {
-                let pid = caller.data().pid;
+            "upload_framebuffer",
+            move |ctx: ProcessContext, (framebuffer,): (WasmList<u8>,)| {
                 unsafe {
                     let drawstate = KERNEL.get_driver::<Self>(id);
-                    drawstate.set_framebuffer_address(pid, framebuffer as u32);
+                    drawstate.upload_framebuffer(framebuffer.as_le_slice(&ctx));
                 }
                 Ok(())
             },
@@ -99,25 +111,23 @@ impl Driver for DrawState {
     }
 
     fn update(&mut self, rl: &mut raylib::RaylibHandle, thread: &raylib::RaylibThread) {
-        unsafe {
-            if let Some((pid, address)) = self.framebuffer_address {
-                let process = KERNEL.get_process(pid).unwrap();
-                let framebuffer = process.get_memory(address as usize, FRAMEBUFFER_SIZE);
-                self.upload_framebuffer(framebuffer);
-            } else {
-                eprintln!("Warning: no framebuffer set!");
-            }
-        }
+        // unsafe {
+        //     if let Some((pid, address)) = self.framebuffer_address {
+        //         let process = KERNEL.get_process(pid).unwrap();
+        //         let framebuffer = process.get_memory(address as usize, FRAMEBUFFER_SIZE);
+        //         self.upload_framebuffer(framebuffer);
+        //     } else {
+        //         eprintln!("Warning: no framebuffer set!");
+        //     }
+        // }
 
+        // TODO: create a systsem function called `upload_framebuffer` to update the framebuffer
+        // when needed.
         let screen_width = rl.get_screen_width();
         let screen_height = rl.get_screen_height();
 
-        let mut d = rl.begin_drawing(&thread);
+        let mut d = rl.begin_drawing(thread);
         self.draw_framebuffer(&mut d, screen_width, screen_height);
-    }
-
-    fn accept_id(&mut self, id: usize) {
-        self.driver_id = id;
     }
 
     fn as_any(&mut self) -> &mut dyn std::any::Any {

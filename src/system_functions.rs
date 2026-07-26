@@ -1,32 +1,13 @@
-use std::io::{Write, stdout};
 use std::time::Duration;
 
 use tokio::task::yield_now;
 use tokio::time::sleep;
 use wasmtime::StoreContextMut;
+use wasmtime::component::{WasmList, WasmStr};
 
 use crate::KERNEL;
 use crate::kernel::{Pid, ProcessContext, ProcessLinker};
 use crate::process::Process;
-
-#[allow(mismatched_lifetime_syntaxes)]
-fn get_memory(ctx: *const ProcessContext, mem_ptr: i32, mem_len: i32) -> Result<&[u8], i32> {
-    unsafe {
-        let process = KERNEL.get_process_mut((*ctx).data().pid).unwrap();
-
-        let mem = process.get_memory(mem_ptr as usize, mem_len as usize);
-        Ok(mem)
-    }
-}
-
-#[allow(mismatched_lifetime_syntaxes)]
-fn get_str(ctx: *const ProcessContext, str_ptr: i32, str_len: i32) -> Result<&str, i32> {
-    let string = get_memory(ctx, str_ptr, str_len)?;
-    let Ok(string) = str::from_utf8(string) else {
-        return Err(2);
-    };
-    Ok(string)
-}
 
 /// Loads all core system functions into the program.
 /// TODO: allow drivers to register their own functions through this or a similar method.
@@ -35,10 +16,9 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
 
     linker.func_wrap(
         "debug_print",
-        |ctx: StoreContextMut<Process>, (str_ptr, str_len): (i32, i32)| {
-            if let Ok(bytes) = get_memory(&ctx, str_ptr, str_len) {
-                // Is okay if it fails (although an error code would be nice)
-                let _ = stdout().write_all(bytes);
+        |ctx: StoreContextMut<Process>, (contents,): (WasmStr,)| {
+            if let Ok(contents) = contents.to_str(&ctx) {
+                println!("{contents}");
             }
             Ok(())
         },
@@ -53,33 +33,33 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
     })?;
 
     // Return Pid
-    linker.func_wrap_async(
-        "spawn",
-        |ctx: ProcessContext, (path_ptr, path_len): (i32, i32)| {
-            let result = get_str(&ctx, path_ptr, path_len);
-            let pid = ctx.data().pid;
+    linker.func_wrap_async("spawn", |ctx: ProcessContext, (path,): (WasmStr,)| {
+        let result = match path.to_str(&ctx) {
+            Ok(p) => Ok(p.as_ref().to_owned()),
+            Err(_) => Err((0,)),
+        };
+        let pid = ctx.data().pid;
 
-            Box::new(async move {
-                unsafe {
-                    let path = match result {
-                        Ok(p) => p,
-                        Err(_) => return Ok((0,)),
-                    };
+        Box::new(async move {
+            unsafe {
+                let path = match result {
+                    Ok(p) => p,
+                    Err(e) => return Ok(e),
+                };
 
-                    match KERNEL.run_process(path, pid).await {
-                        Ok(id) => Ok((id as i32,)),
-                        Err(_) => Ok((0,)),
-                    }
+                match KERNEL.run_process(path.as_ref(), pid).await {
+                    Ok(id) => Ok((id as i32,)),
+                    Err(_) => Ok((0,)),
                 }
-            })
-        },
-    )?;
+            }
+        })
+    })?;
 
-    linker.func_wrap_async("exit", |mut caller: ProcessContext, (code,): (i32,)| {
+    linker.func_wrap_async("exit", |mut ctx: ProcessContext, (code,): (i32,)| {
         Box::new(async move {
             // Await join handle to end program execution.
-            let _ = caller.data_mut().join_handle.as_mut().unwrap().await;
-            caller.data_mut().exit_code = Some(code as u16);
+            let _ = ctx.data_mut().join_handle.as_mut().unwrap().await;
+            ctx.data_mut().exit_code = Some(code as u16);
             Ok(())
         })
     })?;
@@ -97,43 +77,26 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
 
     linker.func_wrap(
         "send_event",
-        |caller: ProcessContext,
-         (name_ptr, name_len, data_ptr, data_len, to_pid): (i32, i32, i32, i32, i32)| {
-            let name = match get_str(&caller, name_ptr, name_len) {
+        |ctx: ProcessContext, (name, data, to_pid): (WasmStr, WasmList<u8>, i32)| {
+            let name = match name.to_str(&ctx) {
                 Ok(name) => name,
-                Err(e) => return Ok((e,)),
+                Err(_) => return Ok((-1,)),
             };
 
-            let data = match get_memory(&caller, data_ptr, data_len) {
-                Ok(d) => d,
-                Err(e) => return Ok((e,)),
-            };
+            let data = data.as_le_slice(&ctx);
 
             unsafe {
-                KERNEL.send_event(name, data, caller.data().pid, to_pid as Pid);
+                KERNEL.send_event(name.as_ref(), data, ctx.data().pid, to_pid as Pid);
             }
 
             Ok((0,))
         },
     )?;
 
-    linker.func_wrap(
-        "get_event_data",
-        |caller: ProcessContext, (buf_ptr, buf_len): (i32, i32)| unsafe {
-            let buf_ptr = buf_ptr as usize;
-            let buf_len = buf_len as usize;
-
-            let event = KERNEL.get_current_event();
-            // WARNING: may cause an issue
-            let process = KERNEL.get_process_mut(caller.data().pid).unwrap();
-            if event.data.len() < buf_len {
-                process.set_memory(buf_ptr, &event.data);
-            } else {
-                process.set_memory(buf_ptr, &event.data[..buf_len]);
-            }
-            Ok(())
-        },
-    )?;
+    linker.func_wrap("get_event_data", |_: ProcessContext, _: ()| unsafe {
+        let event = KERNEL.get_current_event();
+        Ok((&event.data[..event.length as usize],))
+    })?;
 
     linker.func_wrap("get_event_sender", |_: ProcessContext, _: ()| {
         let event = unsafe { KERNEL.get_current_event() };
@@ -142,19 +105,21 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
 
     linker.func_wrap(
         "add_event_handler",
-        |mut ctx: ProcessContext, (name_ptr, name_len): (i32, i32)| {
-            let name = match get_str(&ctx, name_ptr, name_len) {
+        |mut ctx: ProcessContext, (name,): (WasmStr,)| {
+            let ctx_ptr = &mut ctx as *mut ProcessContext;
+
+            let name = match name.to_str(&ctx) {
                 Ok(n) => n,
-                Err(e) => return Ok((e,)),
+                Err(_) => return Ok((-1,)),
             };
-            let interned_name = unsafe { KERNEL.intern_event_name(name) };
+            let interned_name = unsafe { KERNEL.intern_event_name(name.as_ref()) };
 
             let handler = unsafe {
                 KERNEL
                     .get_process(ctx.data().pid)
                     .unwrap()
                     .instance
-                    .get_typed_func::<(i32,), ()>(&mut ctx, name)
+                    .get_typed_func::<(i32,), ()>(&mut *ctx_ptr, name.as_ref())
                     .unwrap()
             };
 
@@ -165,51 +130,29 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
 
     linker.func_wrap(
         "remove_event_handler",
-        |mut caller: ProcessContext, (name_ptr, name_len): (i32, i32)| {
-            let name = match get_str(&caller, name_ptr, name_len) {
+        |mut ctx: ProcessContext, (name,): (WasmStr,)| {
+            let name = match name.to_str(&ctx) {
                 Ok(o) => o,
-                Err(e) => return Ok((e,)),
+                Err(_) => return Ok((-1,)),
             };
-            let interned_name = unsafe { KERNEL.intern_event_name(name) };
+            let interned_name = unsafe { KERNEL.intern_event_name(name.as_ref()) };
 
-            caller.data_mut().remove_event_handler(interned_name);
-            Ok((0,))
-        },
-    )?;
-
-    linker.func_wrap(
-        "proc_memcpy",
-        |caller: ProcessContext, (src_pid, src, dest, len): (i32, i32, i32, i32)| {
-            let src_pid = src_pid as Pid;
-            let src = src as usize;
-            let dest = dest as usize;
-            let len = len as usize;
-
-            unsafe {
-                let Some(src_proc) = KERNEL.get_process(src_pid) else {
-                    return Ok((-1,));
-                };
-
-                KERNEL
-                    .get_process_mut(caller.data().pid)
-                    .unwrap()
-                    .set_memory(dest, src_proc.get_memory(src, len));
-            }
+            ctx.data_mut().remove_event_handler(interned_name);
             Ok((0,))
         },
     )?;
 
     linker.func_wrap(
         "set_process_name",
-        |caller: ProcessContext, (name_ptr, name_len): (i32, i32)| {
-            let name = match get_str(&caller, name_ptr, name_len) {
+        |ctx: ProcessContext, (name,): (WasmStr,)| {
+            let name = match name.to_str(&ctx) {
                 Ok(n) => n,
-                Err(e) => return Ok((e,)),
+                Err(_) => return Ok((-1,)),
             };
 
             unsafe {
-                if !KERNEL.set_process_name(caller.data().pid, name) {
-                    return Ok((-1,));
+                if !KERNEL.set_process_name(ctx.data().pid, name.as_ref()) {
+                    return Ok((-2,));
                 }
             }
 
@@ -217,35 +160,19 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
         },
     )?;
 
-    linker.func_wrap(
-        "get_process_label",
-        |caller: ProcessContext, (buf_ptr, buf_len): (i32, i32)| {
-            let label = &caller.data().label;
-            let bytes = label.as_bytes();
-            if bytes.len() > buf_len as usize {
-                return Ok((0,));
-            }
-
-            unsafe {
-                KERNEL
-                    .get_process_mut(caller.data().pid)
-                    .unwrap()
-                    .set_memory(buf_ptr as usize, bytes);
-            }
-
-            Ok((bytes.len() as i32,))
-        },
-    )?;
+    linker.func_wrap("get_process_label", |caller: ProcessContext, _: ()| {
+        Ok((caller.data().label.to_owned(),))
+    })?;
 
     linker.func_wrap(
         "get_pid_by_name",
-        |caller: ProcessContext, (name_ptr, name_len): (i32, i32)| {
-            let name = match get_str(&caller, name_ptr, name_len) {
+        |ctx: ProcessContext, (name,): (WasmStr,)| {
+            let name = match name.to_str(&ctx) {
                 Ok(n) => n,
                 Err(_) => return Ok((0,)),
             };
 
-            let pid = unsafe { KERNEL.get_pid_by_name(name) as i32 };
+            let pid = unsafe { KERNEL.get_pid_by_name(name.as_ref()) as i32 };
             Ok((pid,))
         },
     )?;

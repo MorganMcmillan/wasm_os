@@ -187,15 +187,7 @@ impl Kernel {
             return Err(CreateProcessError::IncorrectFileType);
         }
 
-        let binary = match std::fs::read(path) {
-            Ok(bin) => bin,
-            Err(e) => match e.kind() {
-                NotFound => return Err(CreateProcessError::FileNotFound),
-                _ => return Err(CreateProcessError::Other),
-            },
-        };
-
-        // let binary = self.read_file(path)?;
+        let binary = self.read_file(path)?;
 
         let mut builder = WasiCtx::builder();
         builder.initial_cwd(self.get_root_dir());
@@ -208,7 +200,14 @@ impl Kernel {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
-        let process = Process::new(wasi_ctx, pid, parent, label);
+
+        let mut process = Process::new(wasi_ctx, pid, parent, label);
+
+        for driver in self.drivers.iter_mut() {
+            if let Some(process_state) = driver.create_process_state() {
+                process.add_driver_state(driver.get_id(), process_state);
+            }
+        }
 
         // TODO: add ability to set kernel filesystem root
         let wasm_state = match WasmProcess::new(binary, &self.engine, process).await {

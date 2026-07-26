@@ -59,6 +59,10 @@ impl Driver for MouseState {
         self.driver_id = id;
     }
 
+    fn get_id(&self) -> usize {
+        self.driver_id
+    }
+
     fn as_any(&mut self) -> &mut dyn std::any::Any {
         self
     }

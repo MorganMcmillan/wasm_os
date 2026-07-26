@@ -1,8 +1,12 @@
 use std::{any::Any, num::NonZeroU32};
 
 use rodio::{MixerDeviceSink, Player, nz};
+use wasmtime::component::WasmList;
 
-use crate::{driver::Driver, kernel::ProcessLinker};
+use crate::{
+    driver::Driver,
+    kernel::{ProcessContext, ProcessLinker},
+};
 
 pub const SAMPLE_RATE: u32 = 44100;
 
@@ -29,7 +33,7 @@ impl Iterator for PcmBuffer {
     fn next(&mut self) -> Option<Self::Item> {
         let sample = *self.samples.get(self.pos)?;
         self.pos += 1;
-        return Some(sample as rodio::Sample / 255.0);
+        Some(sample as rodio::Sample / 255.0)
     }
 }
 
@@ -78,13 +82,31 @@ impl Driver for AudioState {
         self.driver_id = id;
     }
 
-    fn create_process_state(&mut self) -> Option<Box<dyn Any>> {
+    fn get_id(&self) -> usize {
+        self.driver_id
+    }
+
+    fn create_process_state(&mut self) -> Option<Box<dyn Any + Send>> {
         Some(Box::new(ProcessAudioState::new(Player::connect_new(
             self.handle.mixer(),
         ))))
     }
 
-    fn register_functions(&self, _linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+    fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+        let id = self.driver_id;
+
+        linker.func_wrap(
+            "play_sound",
+            move |mut ctx: ProcessContext, (sound,): (WasmList<u8>,)| {
+                let samples = PcmBuffer::new(sound.as_le_slice(&ctx));
+                ctx.data_mut()
+                    .get_driver_state_mut::<ProcessAudioState>(id)
+                    .unwrap()
+                    .play(samples);
+                Ok(())
+            },
+        )?;
+
         Ok(())
     }
 
@@ -102,7 +124,7 @@ impl ProcessAudioState {
         Self { player }
     }
 
-    pub fn play(&self, sampes: PcmBuffer) {
-        self.player.append(sampes);
+    pub fn play(&self, samples: PcmBuffer) {
+        self.player.append(samples);
     }
 }
