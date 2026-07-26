@@ -9,7 +9,8 @@ use crate::process::Process;
 use crate::ptr_cell::PtrCell;
 use crate::system_functions::load_system_functions;
 use tokio::task::yield_now;
-use wasmtime::*;
+use wasmtime::component::Linker;
+use wasmtime::{Engine, Instance, Module, Store};
 
 pub type ProcessStore = Store<Process>;
 
@@ -42,7 +43,8 @@ impl WasmProcess {
         // Modules are compiled from text or binary
         let module = Module::new(engine, binary)?;
 
-        // Linkers expose host functions
+        // Load system functions
+
         let mut linker = Linker::new(engine);
 
         if let Err(e) = load_system_functions(&mut linker) {
@@ -53,6 +55,8 @@ impl WasmProcess {
         unsafe {
             KERNEL.load_driver_functions(&mut linker)?;
         }
+
+        wasmtime_wasi::p2::add_to_linker_async(&mut linker);
 
         // All wasm objects operate in the context of a store.
         // A store is used to store host-specific data of a given type.

@@ -1,10 +1,12 @@
 #![allow(static_mut_refs)]
 
+use std::any::Any;
 use std::collections::HashMap;
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
 use wasmtime::TypedFunc;
+use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 
 use crate::event::Event;
 use crate::kernel::Pid;
@@ -19,11 +21,14 @@ pub struct Process {
     pub event_handlers: HashMap<SymbolU32, TypedFunc<(i32,), ()>>,
     pub join_handle: Option<JoinHandle<i32>>,
     pub label: Box<str>,
+    pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
+    pub wasi_ctx: WasiCtx,
+    pub wasi_table: ResourceTable,
 }
 
 #[allow(dead_code)]
 impl Process {
-    pub fn new(pid: Pid, parent_pid: Pid, label: impl Into<Box<str>>) -> Self {
+    pub fn new(wasi_ctx: WasiCtx, pid: Pid, parent_pid: Pid, label: impl Into<Box<str>>) -> Self {
         Self {
             pid,
             parent_pid,
@@ -33,6 +38,9 @@ impl Process {
             event_handlers: HashMap::new(),
             join_handle: None,
             label: label.into(),
+            driver_states: HashMap::new(),
+            wasi_ctx,
+            wasi_table: ResourceTable::new(),
         }
     }
 
@@ -63,5 +71,14 @@ impl Process {
 
     pub fn remove_event_handler(&mut self, name: SymbolU32) {
         self.event_handlers.remove(&name);
+    }
+}
+
+impl WasiView for Process {
+    fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi_ctx,
+            table: &mut self.wasi_table,
+        }
     }
 }

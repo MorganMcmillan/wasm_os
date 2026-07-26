@@ -1,10 +1,16 @@
-use crate::{KERNEL, driver::Driver, kernel::Pid, system_functions::ProcessCaller};
+use crate::{
+    KERNEL,
+    driver::Driver,
+    kernel::{Pid, ProcessContext, ProcessLinker},
+    system_functions::ProcessCaller,
+};
 use raylib::{
     drawing::{RaylibDraw, RaylibDrawHandle},
     ffi::{Color, Vector2},
     math::Rectangle,
     texture::{RaylibTexture2D, Texture2D},
 };
+use std::any::Any as _;
 
 pub const FRAMEBUFFER_WIDTH: usize = 384;
 pub const FRAMEBUFFER_HEIGHT: usize = 216;
@@ -21,6 +27,7 @@ fn byte_to_rgb(byte: u8) -> (u8, u8, u8) {
 pub struct DrawState {
     pub framebuffer_address: Option<(Pid, u32)>,
     pub framebuffer_texture: Texture2D,
+    driver_id: usize,
 }
 
 impl DrawState {
@@ -28,6 +35,7 @@ impl DrawState {
         Self {
             framebuffer_address: None,
             framebuffer_texture: texture,
+            driver_id: 0,
         }
     }
 
@@ -74,26 +82,42 @@ impl DrawState {
 }
 
 impl Driver for DrawState {
-    fn register_functions(
-        &self,
-        linker: &mut wasmtime::Linker<crate::process::Process>,
-    ) -> wasmtime::Result<()> {
-        // Draw state
+    fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+        let id = self.driver_id;
         linker.func_wrap(
-            "env",
             "set_active_framebuffer",
-            |caller: ProcessCaller, framebuffer: i32| {
+            |caller: ProcessContext, (framebuffer,): (i32,)| {
                 let pid = caller.data().pid;
                 unsafe {
-                    KERNEL
-                        .drawstate
-                        .set_framebuffer_address(pid, framebuffer as u32);
+                    let drawstate = KERNEL.get_driver::<Self>(id);
+                    self.set_framebuffer_address(pid, framebuffer as u32);
                 }
+                Ok(())
             },
         )?;
 
         Ok(())
     }
 
-    fn update(&mut self, _rl: &mut raylib::prelude::RaylibHandle) {}
+    fn update(&mut self, rl: &mut raylib::RaylibHandle, thread: &raylib::RaylibThread) {
+        unsafe {
+            if let Some((pid, address)) = self.framebuffer_address {
+                let process = KERNEL.get_process(pid).unwrap();
+                let framebuffer = process.get_memory(address as usize, FRAMEBUFFER_SIZE);
+                self.upload_framebuffer(framebuffer);
+            } else {
+                eprintln!("Warning: no framebuffer set!");
+            }
+        }
+
+        let screen_width = rl.get_screen_width();
+        let screen_height = rl.get_screen_height();
+
+        let mut d = rl.begin_drawing(&thread);
+        self.draw_framebuffer(&mut d, screen_width, screen_height);
+    }
+
+    fn accept_id(&mut self, id: usize) {
+        self.driver_id = id;
+    }
 }

@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::io::ErrorKind::NotFound;
@@ -14,9 +15,13 @@ use string_interner::symbol::SymbolU32;
 use tokio::task;
 use wasmtime::Config;
 use wasmtime::Engine;
+use wasmtime::StoreContextMut;
+use wasmtime::component::LinkerInstance;
+use wasmtime_wasi::WasiCtx;
 
 use crate::KERNEL;
 use crate::driver;
+use crate::driver::Driver;
 use crate::driver::Driver as _;
 use crate::event::Event;
 use crate::event::EventData;
@@ -24,6 +29,8 @@ use crate::process::Process;
 use crate::wasm_process::WasmProcess;
 
 pub type Pid = u16;
+pub type ProcessLinker<'a> = LinkerInstance<'a, Process>;
+pub type ProcessContext<'a> = StoreContextMut<'a, Process>;
 
 #[derive(Debug)]
 pub enum CreateProcessError {
@@ -35,8 +42,7 @@ pub enum CreateProcessError {
 
 pub struct Kernel {
     engine: Engine,
-    pub drawstate: driver::draw::DrawState,
-    pub mousestate: driver::input::MouseState,
+    pub drivers: Vec<Box<dyn Driver>>,
     // A sparse map of Pids to processes
     pub processes: Vec<Option<WasmProcess>>,
     // A map of process names to Pids
@@ -47,6 +53,7 @@ pub struct Kernel {
     interned_event_names: StringInterner<StringBackend>,
     // The top-level directory for which programs can be executed from
     ambient_dir: cap_std::fs::Dir,
+    root_dir_path: Box<str>,
 }
 
 unsafe impl Send for Kernel {}
@@ -57,20 +64,28 @@ const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
 impl Kernel {
-    pub fn new(root_dir: impl AsRef<Path>, drawstate: driver::draw::DrawState) -> Self {
+    pub fn new(root_dir: &str, mut drivers: Vec<Box<dyn Driver>>) -> Self {
         let mut config = Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
 
+        for (id, driver) in drivers.iter_mut().enumerate() {
+            driver.accept_id(id);
+        }
+
         Self {
             engine: Engine::new(&config).unwrap(),
-            drawstate,
-            mousestate: driver::input::MouseState::new(),
+            drivers,
             processes: Vec::new(),
             process_names: HashMap::new(),
             current_pid: 0,
             current_event: None,
             interned_event_names: StringInterner::new(),
-            ambient_dir: cap_std::fs::Dir::open_ambient_dir(root_dir, ambient_authority()).unwrap(),
+            ambient_dir: cap_std::fs::Dir::open_ambient_dir(
+                Path::new(root_dir),
+                ambient_authority(),
+            )
+            .unwrap(),
+            root_dir_path: root_dir.into(),
         }
     }
 
@@ -80,11 +95,12 @@ impl Kernel {
 
     // Loads each driver's functions.
     pub fn load_driver_functions(
-        &self,
-        linker: &mut wasmtime::Linker<crate::process::Process>,
+        &mut self,
+        linker: &mut wasmtime::component::Linker<crate::process::Process>,
     ) -> wasmtime::Result<()> {
-        self.drawstate.register_functions(linker)?;
-        self.mousestate.register_functions(linker)?;
+        for driver in self.drivers.iter_mut() {
+            driver.register_functions(linker)?;
+        }
 
         Ok(())
     }
@@ -163,6 +179,10 @@ impl Kernel {
         Ok(bytes)
     }
 
+    fn get_root_dir(&self) -> &str {
+        &self.root_dir_path
+    }
+
     pub async fn create_process(
         &mut self,
         path: &str,
@@ -182,6 +202,10 @@ impl Kernel {
 
         // let binary = self.read_file(path)?;
 
+        let mut builder = WasiCtx::builder();
+        builder.initial_cwd(self.get_root_dir());
+        let wasi_ctx = builder.build();
+
         // TODO: figure out better way to handle process ids
         let pid = self.processes.len() as u16 + 1;
         let path = std::path::Path::new(path);
@@ -189,7 +213,7 @@ impl Kernel {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
-        let process = Process::new(pid, parent, label);
+        let process = Process::new(wasi_ctx, pid, parent, label);
 
         // TODO: add ability to set kernel filesystem root
         let wasm_state = match WasmProcess::new(binary, &self.engine, process).await {
@@ -247,25 +271,13 @@ impl Kernel {
         self.get_process_mut(self.current_pid).unwrap()
     }
 
-    pub fn update(&mut self, rl: &mut RaylibHandle) {
+    pub fn update(&mut self, rl: &mut RaylibHandle, thread: &raylib::RaylibThread) {
         if rl.is_key_pressed(KeyboardKey::KEY_F11) {
             rl.toggle_fullscreen();
         }
 
-        self.mousestate.update(rl);
-    }
-
-    pub fn upload_framebuffer(&mut self) {
-        let kernel = self as *mut Self;
-        unsafe {
-            if let Some((pid, address)) = (*kernel).drawstate.framebuffer_address {
-                let process = (*kernel).get_process(pid).unwrap();
-                let framebuffer =
-                    process.get_memory(address as usize, driver::draw::FRAMEBUFFER_SIZE);
-                (*kernel).drawstate.upload_framebuffer(framebuffer);
-            } else {
-                eprintln!("Warning: no framebuffer set!");
-            }
+        for driver in self.drivers.iter_mut() {
+            driver.update(rl, thread);
         }
     }
 
