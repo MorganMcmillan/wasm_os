@@ -3,13 +3,11 @@ use std::time::Duration;
 
 use tokio::task::yield_now;
 use tokio::time::sleep;
-use wasmtime::{Caller, StoreContextMut};
+use wasmtime::StoreContextMut;
 
 use crate::KERNEL;
 use crate::kernel::{Pid, ProcessContext, ProcessLinker};
 use crate::process::Process;
-
-pub type ProcessCaller<'a> = Caller<'a, Process>;
 
 #[allow(mismatched_lifetime_syntaxes)]
 fn get_memory(ctx: *const ProcessContext, mem_ptr: i32, mem_len: i32) -> Result<&[u8], i32> {
@@ -156,7 +154,7 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
                     .get_process(ctx.data().pid)
                     .unwrap()
                     .instance
-                    .get_typed_func(&mut ctx, name)
+                    .get_typed_func::<(i32,), ()>(&mut ctx, name)
                     .unwrap()
             };
 

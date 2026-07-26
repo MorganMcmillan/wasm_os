@@ -4,7 +4,6 @@ use crate::{
     KERNEL,
     driver::{Driver, draw},
     kernel::{ProcessContext, ProcessLinker},
-    system_functions::ProcessCaller,
 };
 
 /// Normalizes a given coordinate to be within `normalized_length`.
@@ -33,12 +32,12 @@ impl Driver for MouseState {
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
         let id = self.driver_id;
 
-        linker.func_wrap("env", "get_mouse_x", |_: ProcessContext, _: ()| unsafe {
+        linker.func_wrap("get_mouse_x", move |_: ProcessContext, _: ()| unsafe {
             let mousestate = KERNEL.get_driver::<Self>(id);
             Ok((mousestate.x as i32,))
         })?;
 
-        linker.func_wrap("env", "get_mouse_y", |_: ProcessCaller| unsafe {
+        linker.func_wrap("get_mouse_y", move |_: ProcessContext, _: ()| unsafe {
             let mousestate = KERNEL.get_driver::<Self>(id);
             Ok((mousestate.y as i32,))
         })?;
@@ -56,5 +55,11 @@ impl Driver for MouseState {
         self.y = normalize_coordinate(my, screen_height, draw::FRAMEBUFFER_HEIGHT as i32);
     }
 
-    fn accept_id(&mut self, _id: usize) {}
+    fn accept_id(&mut self, id: usize) {
+        self.driver_id = id;
+    }
+
+    fn as_any(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }

@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
-use wasmtime::TypedFunc;
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 
 use crate::event::Event;
@@ -18,7 +17,7 @@ pub struct Process {
     pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
-    pub event_handlers: HashMap<SymbolU32, TypedFunc<(i32,), ()>>,
+    pub event_handlers: HashMap<SymbolU32, wasmtime::component::TypedFunc<(i32,), ()>>,
     pub join_handle: Option<JoinHandle<i32>>,
     pub label: Box<str>,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
@@ -65,7 +64,11 @@ impl Process {
         self.event_queue.push(event);
     }
 
-    pub fn add_event_handler(&mut self, name: SymbolU32, handler: TypedFunc<(i32,), ()>) {
+    pub fn add_event_handler(
+        &mut self,
+        name: SymbolU32,
+        handler: wasmtime::component::TypedFunc<(i32,), ()>,
+    ) {
         self.event_handlers.insert(name, handler);
     }
 

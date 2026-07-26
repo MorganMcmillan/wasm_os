@@ -2,7 +2,6 @@ use crate::{
     KERNEL,
     driver::Driver,
     kernel::{Pid, ProcessContext, ProcessLinker},
-    system_functions::ProcessCaller,
 };
 use raylib::{
     drawing::{RaylibDraw, RaylibDrawHandle},
@@ -10,7 +9,6 @@ use raylib::{
     math::Rectangle,
     texture::{RaylibTexture2D, Texture2D},
 };
-use std::any::Any as _;
 
 pub const FRAMEBUFFER_WIDTH: usize = 384;
 pub const FRAMEBUFFER_HEIGHT: usize = 216;
@@ -84,13 +82,14 @@ impl DrawState {
 impl Driver for DrawState {
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
         let id = self.driver_id;
+
         linker.func_wrap(
             "set_active_framebuffer",
-            |caller: ProcessContext, (framebuffer,): (i32,)| {
+            move |caller: ProcessContext, (framebuffer,): (i32,)| {
                 let pid = caller.data().pid;
                 unsafe {
                     let drawstate = KERNEL.get_driver::<Self>(id);
-                    self.set_framebuffer_address(pid, framebuffer as u32);
+                    drawstate.set_framebuffer_address(pid, framebuffer as u32);
                 }
                 Ok(())
             },
@@ -119,5 +118,9 @@ impl Driver for DrawState {
 
     fn accept_id(&mut self, id: usize) {
         self.driver_id = id;
+    }
+
+    fn as_any(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }

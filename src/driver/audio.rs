@@ -87,6 +87,10 @@ impl Driver for AudioState {
     fn register_functions(&self, _linker: &mut ProcessLinker) -> wasmtime::Result<()> {
         Ok(())
     }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 pub struct ProcessAudioState {

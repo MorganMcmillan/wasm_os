@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use raylib::RaylibHandle;
 use wasmtime::component::LinkerInstance;
 
@@ -22,4 +24,6 @@ pub trait Driver: std::any::Any {
     fn create_process_state(&mut self) -> Option<Box<dyn std::any::Any>> {
         None
     }
+
+    fn as_any(&mut self) -> &mut dyn Any;
 }

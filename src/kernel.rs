@@ -20,9 +20,7 @@ use wasmtime::component::LinkerInstance;
 use wasmtime_wasi::WasiCtx;
 
 use crate::KERNEL;
-use crate::driver;
 use crate::driver::Driver;
-use crate::driver::Driver as _;
 use crate::event::Event;
 use crate::event::EventData;
 use crate::process::Process;
@@ -94,10 +92,7 @@ impl Kernel {
     }
 
     // Loads each driver's functions.
-    pub fn load_driver_functions(
-        &mut self,
-        linker: &mut wasmtime::component::Linker<crate::process::Process>,
-    ) -> wasmtime::Result<()> {
+    pub fn load_driver_functions(&mut self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
         for driver in self.drivers.iter_mut() {
             driver.register_functions(linker)?;
         }
@@ -279,6 +274,12 @@ impl Kernel {
         for driver in self.drivers.iter_mut() {
             driver.update(rl, thread);
         }
+    }
+
+    // Drivers
+
+    pub fn get_driver<T: Any>(&mut self, id: usize) -> &mut T {
+        self.drivers[id].as_any().downcast_mut().unwrap()
     }
 
     // Events
