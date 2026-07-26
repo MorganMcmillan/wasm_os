@@ -1,0 +1,6 @@
+package wasm-os:input;
+
+world input {
+    import get_mouse_x: func() -> i32;
+    import get_mouse_y: func() -> i32;
+}

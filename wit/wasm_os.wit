@@ -1,0 +1,19 @@
+package wasm-os:system;
+
+world system {
+    import debug_print: func(string);
+    import get_pid: func() -> i32;
+    import get_parent_pid: func() -> i32;
+    import spawn: func(string) -> i32;
+    import exit: func(i32);
+    import sleep: func(f64);
+    import send_event: func(string, list<u8>, i32) -> i32;
+    import get_event_data: func() -> list<u8>;
+    import get_event_sender: func() -> i32;
+    import add_event_handler: func(string) -> i32;
+    import remove_event_handler: func(string) -> i32;
+    import set_process_name: func(string) -> i32;
+    import get_process_label: func() -> string;
+    import get_pid_by_name: func(string) -> i32;
+    import yield_now: func();
+}
