@@ -64,6 +64,7 @@ impl Kernel {
     pub fn new(root_dir: &str, mut drivers: Vec<Box<dyn Driver>>) -> Self {
         let mut config = Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
+        config.epoch_interruption(true);
 
         for (id, driver) in drivers.iter_mut().enumerate() {
             driver.accept_id(id);
