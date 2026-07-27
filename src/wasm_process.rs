@@ -98,7 +98,7 @@ impl WasmProcess {
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
                 KERNEL.set_current_event(&raw mut event);
                 let result = handler
-                    .call_async(&mut self.store, (event.data.len() as i32,))
+                    .call_async(&mut self.store, (event.data.len() as u32,))
                     .await;
 
                 if let Err(e) = result {
