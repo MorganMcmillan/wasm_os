@@ -1,11 +1,11 @@
 use std::{any::Any, num::NonZeroU32};
 
 use rodio::{MixerDeviceSink, Player, nz};
-use wasmtime::component::WasmList;
 
 use crate::{
     driver::Driver,
     kernel::{ProcessContext, ProcessLinker},
+    system_functions,
 };
 
 pub const SAMPLE_RATE: u32 = 44100;
@@ -96,14 +96,20 @@ impl Driver for AudioState {
         let id = self.driver_id;
 
         linker.func_wrap(
-            "play-sound",
-            move |mut ctx: ProcessContext, (sound,): (WasmList<u8>,)| {
-                let samples = PcmBuffer::new(sound.as_le_slice(&ctx));
+            "env",
+            "play_sound",
+            move |mut ctx: ProcessContext, sound_ptr: i32, sound_len: i32| {
+                let sound = match system_functions::get_memory(&ctx, sound_ptr, sound_len) {
+                    Ok(sound) => sound,
+                    Err(e) => return e,
+                };
+
+                let samples = PcmBuffer::new(sound);
                 ctx.data_mut()
                     .get_driver_state_mut::<ProcessAudioState>(id)
                     .unwrap()
                     .play(samples);
-                Ok(())
+                0
             },
         )?;
 

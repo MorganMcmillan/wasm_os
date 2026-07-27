@@ -34,12 +34,12 @@ impl Driver for MouseState {
 
         linker.func_wrap("env", "get_mouse_x", move |_: ProcessContext| unsafe {
             let mousestate = KERNEL.get_driver::<Self>(id);
-            Ok((mousestate.x as i32,))
+            mousestate.x as i32
         })?;
 
         linker.func_wrap("env", "get_mouse_y", move |_: ProcessContext| unsafe {
             let mousestate = KERNEL.get_driver::<Self>(id);
-            Ok((mousestate.y as i32,))
+            mousestate.y as i32
         })?;
 
         Ok(())

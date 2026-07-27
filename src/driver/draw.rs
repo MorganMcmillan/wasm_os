@@ -2,6 +2,7 @@ use crate::{
     KERNEL,
     driver::Driver,
     kernel::{ProcessContext, ProcessLinker},
+    system_functions,
 };
 use raylib::{
     drawing::{RaylibDraw, RaylibDrawHandle},
@@ -9,7 +10,6 @@ use raylib::{
     math::Rectangle,
     texture::{RaylibTexture2D, Texture2D},
 };
-use wasmtime::component::WasmList;
 
 pub const FRAMEBUFFER_WIDTH: usize = 384;
 pub const FRAMEBUFFER_HEIGHT: usize = 216;
@@ -99,10 +99,13 @@ impl Driver for DrawState {
         linker.func_wrap(
             "env",
             "upload_framebuffer",
-            move |ctx: ProcessContext, (framebuffer,): (WasmList<u8>,)| {
+            move |ctx: ProcessContext, framebuffer: i32| {
                 unsafe {
                     let drawstate = KERNEL.get_driver::<Self>(id);
-                    drawstate.upload_framebuffer(framebuffer.as_le_slice(&ctx));
+                    drawstate.upload_framebuffer(
+                        system_functions::get_memory(&ctx, framebuffer, FRAMEBUFFER_SIZE as i32)
+                            .unwrap(),
+                    );
                 }
                 Ok(())
             },

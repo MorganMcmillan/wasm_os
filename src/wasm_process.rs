@@ -9,10 +9,27 @@ use crate::process::Process;
 use crate::ptr_cell::PtrCell;
 use crate::system_functions::load_system_functions;
 use tokio::task::yield_now;
-use wasmtime::{Engine, Module, Store};
+use wasmtime::{Engine, Instance, Module, Store};
 
 pub type ProcessStore = Store<Process>;
 
+/// Returns a view of a WASM memory.
+/// Note: this function exists entirely because I was having borrow errors.
+#[allow(invalid_reference_casting)]
+fn get_memory_slice<'a>(instance: &'a Instance, store: &'a ProcessStore) -> &'a [u8] {
+    let store_ptr = store as *const ProcessStore as *mut ProcessStore;
+    unsafe {
+        let memory = instance.get_memory(&mut *store_ptr, "memory").unwrap();
+        memory.data(store)
+    }
+}
+
+/// Returns a mutable view of a WASM memory.
+/// Note: this function exists entirely because I was having borrow errors.
+fn get_memory_slice_mut<'a>(instance: &'a Instance, store: &'a mut ProcessStore) -> &'a mut [u8] {
+    let memory = instance.get_memory(&mut *store, "memory").unwrap();
+    memory.data_mut(store)
+}
 /// Represents the actual running process, including its memory and functions
 pub struct WasmProcess {
     pub instance: wasmtime::Instance,
@@ -42,6 +59,25 @@ impl WasmProcess {
         let instance = linker.instantiate_async(&mut store, &module).await?;
 
         Ok(Self { instance, store })
+    }
+
+    /// Gets a slice of memory
+    pub fn get_memory(&self, address: usize, len: usize) -> &[u8] {
+        let memory = get_memory_slice(&self.instance, &self.store);
+        &memory[address..(address + len)]
+    }
+
+    /// Sets a slice of memory. The length of the slice is given by the lenght of the value
+    pub fn set_memory(&mut self, address: usize, value: &[u8]) {
+        let memory = get_memory_slice_mut(&self.instance, &mut self.store);
+        let memory = &mut memory[address..];
+        if memory.len() < value.len() {
+            panic!("Attempted to set memory region to value larger than region allows");
+        }
+
+        for (i, &byte) in value.iter().enumerate() {
+            memory[i] = byte;
+        }
     }
 
     pub async fn run(&mut self) -> i32 {
