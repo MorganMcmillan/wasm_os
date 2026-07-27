@@ -9,11 +9,11 @@ pub struct Event {
 }
 
 impl Event {
-    pub fn new(data: Box<[u8]>, sent_by_pid: Pid, name: SymbolU32) -> Self {
+    pub fn new(data: Box<[u8]>, sent_by_pid: Pid, interned_name: SymbolU32) -> Self {
         Self {
             data,
             sent_by_pid,
-            interned_name: name,
+            interned_name,
         }
     }
 }

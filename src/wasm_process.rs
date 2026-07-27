@@ -94,11 +94,13 @@ impl WasmProcess {
             let self_ptr = self as *mut Self;
 
             let sym = event.interned_name;
+
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
                 KERNEL.set_current_event(&raw mut event);
                 let result = handler
                     .call_async(&mut self.store, (event.data.len() as i32,))
                     .await;
+
                 if let Err(e) = result {
                     let event_name = KERNEL.get_event_name(sym);
                     eprintln!("Error in event handler {}: {}", event_name, e);
