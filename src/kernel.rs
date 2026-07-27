@@ -5,6 +5,7 @@ use std::io::ErrorKind::NotFound;
 use std::io::Read;
 use std::path::Path;
 use std::ptr::NonNull;
+use std::time::Duration;
 
 use cap_std::ambient_authority;
 use raylib::RaylibHandle;
@@ -45,8 +46,6 @@ pub struct Kernel {
     pub processes: Vec<Option<WasmProcess>>,
     // A map of process names to Pids
     process_names: HashMap<Box<str>, Pid>,
-    // The current pid of the running program
-    current_pid: Pid,
     current_event: Option<NonNull<Event>>,
     interned_event_names: StringInterner<StringBackend>,
     // The top-level directory for which programs can be executed from
@@ -70,12 +69,20 @@ impl Kernel {
             driver.accept_id(id);
         }
 
+        let engine = Engine::new(&config).unwrap();
+        let engine_clone = engine.clone();
+
+        // Periodically interupt process execution
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            engine_clone.increment_epoch();
+        });
+
         Self {
-            engine: Engine::new(&config).unwrap(),
+            engine,
             drivers,
             processes: Vec::new(),
             process_names: HashMap::new(),
-            current_pid: 0,
             current_event: None,
             interned_event_names: StringInterner::new(),
             ambient_dir: cap_std::fs::Dir::open_ambient_dir(
@@ -244,25 +251,6 @@ impl Kernel {
             Some(Some(process)) => Some(process),
             _ => None,
         }
-    }
-
-    pub fn set_current_pid(&mut self, pid: Pid) {
-        self.current_pid = pid;
-    }
-
-    #[allow(dead_code)]
-    pub fn get_current_pid(&self) -> Pid {
-        self.current_pid
-    }
-
-    #[allow(dead_code)]
-    pub fn get_current_process(&self) -> &WasmProcess {
-        self.get_process(self.current_pid).unwrap()
-    }
-
-    #[allow(dead_code)]
-    pub fn get_current_process_mut(&mut self) -> &mut WasmProcess {
-        self.get_process_mut(self.current_pid).unwrap()
     }
 
     pub fn update(&mut self, rl: &mut RaylibHandle, thread: &raylib::RaylibThread) {

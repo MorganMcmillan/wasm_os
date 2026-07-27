@@ -8,6 +8,7 @@ impl<T> PtrCell<T> {
         Self { inner }
     }
 
+    #[allow(unused)]
     pub fn get(&self) -> &T {
         unsafe { &*self.inner }
     }

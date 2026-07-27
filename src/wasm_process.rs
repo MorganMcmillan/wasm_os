@@ -66,10 +66,6 @@ impl WasmProcess {
         let mut main_loop = Box::pin(run.call_async(&mut self.store, ()));
 
         loop {
-            unsafe {
-                KERNEL.set_current_pid(self_cell.get().store.data().pid);
-            }
-
             self_cell.get_mut().process_queue().await;
 
             let poll_result =
