@@ -288,6 +288,10 @@ impl Kernel {
         self.current_event = NonNull::new(event_ptr);
     }
 
+    pub fn end_current_event(&mut self) {
+        self.current_event = None;
+    }
+
     pub fn get_current_event(&self) -> &Event {
         unsafe {
             self.current_event

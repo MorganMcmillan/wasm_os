@@ -139,6 +139,8 @@ impl WasmProcess {
                     let event_name = KERNEL.get_event_name(sym);
                     eprintln!("Error in event handler {}: {}", event_name, e);
                 }
+
+                KERNEL.end_current_event();
             }
         }
     }
