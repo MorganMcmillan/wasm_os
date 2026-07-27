@@ -1,5 +1,0 @@
-package wasm-os:draw;
-
-world draw {
-    import upload-framebuffer: func(framebuffer: list<u8>);
-}

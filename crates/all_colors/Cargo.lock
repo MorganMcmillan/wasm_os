@@ -26,9 +26,6 @@ dependencies = [
 [[package]]
 name = "draw"
 version = "0.1.0"
-dependencies = [
- "wit-bindgen",
-]
 
 [[package]]
 name = "equivalent"
@@ -239,9 +236,6 @@ dependencies = [
 [[package]]
 name = "wasm_os"
 version = "0.1.0"
-dependencies = [
- "wit-bindgen",
-]
 
 [[package]]
 name = "wasmparser"

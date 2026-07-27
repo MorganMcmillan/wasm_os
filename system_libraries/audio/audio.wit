@@ -1,5 +1,0 @@
-package wasm-os:audio;
-
-world audio {
-    import play-sound: func(samples: list<u8>);
-}
