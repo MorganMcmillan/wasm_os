@@ -32,12 +32,12 @@ impl Driver for MouseState {
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
         let id = self.driver_id;
 
-        linker.func_wrap("get-mouse-x", move |_: ProcessContext, _: ()| unsafe {
+        linker.func_wrap("env", "get_mouse_x", move |_: ProcessContext| unsafe {
             let mousestate = KERNEL.get_driver::<Self>(id);
             Ok((mousestate.x as i32,))
         })?;
 
-        linker.func_wrap("get-mouse-y", move |_: ProcessContext, _: ()| unsafe {
+        linker.func_wrap("env", "get_mouse_y", move |_: ProcessContext| unsafe {
             let mousestate = KERNEL.get_driver::<Self>(id);
             Ok((mousestate.y as i32,))
         })?;

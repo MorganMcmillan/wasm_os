@@ -9,30 +9,27 @@ use crate::process::Process;
 use crate::ptr_cell::PtrCell;
 use crate::system_functions::load_system_functions;
 use tokio::task::yield_now;
-use wasmtime::component::Component;
-use wasmtime::{Engine, Store};
+use wasmtime::{Engine, Module, Store};
 
 pub type ProcessStore = Store<Process>;
 
 /// Represents the actual running process, including its memory and functions
 pub struct WasmProcess {
-    pub instance: wasmtime::component::Instance,
+    pub instance: wasmtime::Instance,
     pub store: ProcessStore,
 }
 
 impl WasmProcess {
     pub async fn new(binary: Vec<u8>, engine: &Engine, process: Process) -> wasmtime::Result<Self> {
         // Modules are compiled from text or binary
-        let component = Component::new(engine, binary)?;
-        let mut linker = wasmtime::component::Linker::new(engine);
-        let mut root = linker.root();
+        let module = Module::new(engine, binary)?;
+        let mut linker = wasmtime::Linker::new(engine);
 
         // Load functions
-        load_system_functions(&mut root)?;
+        load_system_functions(&mut linker)?;
         unsafe {
-            KERNEL.load_driver_functions(&mut root)?;
+            KERNEL.load_driver_functions(&mut linker)?;
         }
-        wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
 
         // All wasm objects operate in the context of a store.
         // A store is used to store host-specific data of a given type.
@@ -42,7 +39,7 @@ impl WasmProcess {
         store.epoch_deadline_async_yield_and_update(1);
         store.set_epoch_deadline(1);
 
-        let instance = linker.instantiate_async(&mut store, &component).await?;
+        let instance = linker.instantiate_async(&mut store, &module).await?;
 
         Ok(Self { instance, store })
     }
@@ -52,7 +49,7 @@ impl WasmProcess {
 
         let run = self
             .instance
-            .get_typed_func::<(), (i32,)>(&mut self.store, "run")
+            .get_typed_func::<(), i32>(&mut self.store, "run")
             .expect("Expected the program to have an exported run function.");
         let mut main_loop = Box::pin(run.call_async(&mut self.store, ()));
 
@@ -63,7 +60,7 @@ impl WasmProcess {
                 Future::poll(main_loop.as_mut(), &mut Context::from_waker(Waker::noop()));
             match poll_result {
                 Ready(result) => match result {
-                    Ok((code,)) => {
+                    Ok(code) => {
                         self_cell.get_mut().store.data_mut().exit_code = Some(code as u16);
                         return code;
                     }

@@ -14,10 +14,9 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU32;
 use tokio::task;
+use wasmtime::Caller;
 use wasmtime::Config;
 use wasmtime::Engine;
-use wasmtime::StoreContextMut;
-use wasmtime::component::LinkerInstance;
 use wasmtime_wasi::WasiCtx;
 
 use crate::KERNEL;
@@ -27,8 +26,8 @@ use crate::process::Process;
 use crate::wasm_process::WasmProcess;
 
 pub type Pid = u16;
-pub type ProcessLinker<'a> = LinkerInstance<'a, Process>;
-pub type ProcessContext<'a> = StoreContextMut<'a, Process>;
+pub type ProcessLinker = wasmtime::Linker<Process>;
+pub type ProcessContext<'a> = Caller<'a, Process>;
 
 #[derive(Debug)]
 pub enum CreateProcessError {

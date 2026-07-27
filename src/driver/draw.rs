@@ -97,7 +97,8 @@ impl Driver for DrawState {
         let id = self.driver_id;
 
         linker.func_wrap(
-            "upload-framebuffer",
+            "env",
+            "upload_framebuffer",
             move |ctx: ProcessContext, (framebuffer,): (WasmList<u8>,)| {
                 unsafe {
                     let drawstate = KERNEL.get_driver::<Self>(id);

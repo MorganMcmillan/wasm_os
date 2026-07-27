@@ -1,9 +1,8 @@
 use std::any::Any;
 
 use raylib::{RaylibHandle, RaylibThread};
-use wasmtime::component::LinkerInstance;
 
-use crate::process::Process;
+use crate::kernel::ProcessLinker;
 
 pub mod audio;
 pub mod draw;
@@ -11,7 +10,7 @@ pub mod input;
 
 pub trait Driver: Any {
     // Regester wrapped functions for a new process
-    fn register_functions(&self, linker: &mut LinkerInstance<Process>) -> wasmtime::Result<()>;
+    fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()>;
 
     // Update this driver's state whenever the kernel's update executes.
     fn update(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread);
