@@ -24,34 +24,25 @@ impl WasmProcess {
     pub async fn new(binary: Vec<u8>, engine: &Engine, process: Process) -> wasmtime::Result<Self> {
         // Modules are compiled from text or binary
         let component = Component::new(engine, binary)?;
-
-        // Load system functions
-
         let mut linker = wasmtime::component::Linker::new(engine);
-
         let mut root = linker.root();
 
-        if let Err(e) = load_system_functions(&mut root) {
-            eprintln!("Error loading system functions: {:?}", e);
-            return Err(e);
-        };
-
+        // Load functions
+        load_system_functions(&mut root)?;
         unsafe {
             KERNEL.load_driver_functions(&mut root)?;
         }
-
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
 
         // All wasm objects operate in the context of a store.
         // A store is used to store host-specific data of a given type.
         let mut store = Store::new(engine, process);
-        let instance = match linker.instantiate_async(&mut store, &component).await {
-            Err(e) => {
-                eprintln!("Error creating instance: {:?}", e);
-                return Err(e);
-            }
-            Ok(i) => i,
-        };
+
+        // Configure preemptive interuption
+        store.epoch_deadline_async_yield_and_update(1);
+        store.set_epoch_deadline(1);
+
+        let instance = linker.instantiate_async(&mut store, &component).await?;
 
         Ok(Self { instance, store })
     }
