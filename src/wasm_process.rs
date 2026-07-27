@@ -53,6 +53,7 @@ impl WasmProcess {
         let mut store = Store::new(engine, process);
 
         // Configure preemptive interuption
+        // TODO: figure out how this actually works
         store.epoch_deadline_async_yield_and_update(1);
         store.set_epoch_deadline(1);
 
@@ -132,18 +133,9 @@ impl WasmProcess {
                 KERNEL.set_current_event(&raw mut event);
                 let length = event.data.len();
 
-                let result = self
-                    .store
-                    .run_concurrent(async |accessor| -> wasmtime::Result<_> {
-                        handler.call_concurrent(accessor, (length as u32,)).await?;
-                        Ok(())
-                    })
-                    .await;
+                let result = handler.call_async(&mut self.store, length as i32).await;
 
                 if let Err(e) = result {
-                    let event_name = KERNEL.get_event_name(sym);
-                    eprintln!("Error in event handler {}: {}", event_name, e);
-                } else if let Ok(Err(e)) = result {
                     let event_name = KERNEL.get_event_name(sym);
                     eprintln!("Error in event handler {}: {}", event_name, e);
                 }

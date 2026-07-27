@@ -17,7 +17,7 @@ pub struct Process {
     pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
-    pub event_handlers: HashMap<SymbolU32, wasmtime::component::TypedFunc<(u32,), ()>>,
+    pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
     pub join_handle: Option<JoinHandle<i32>>,
     pub label: Box<str>,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
@@ -64,11 +64,7 @@ impl Process {
         self.event_queue.push(event);
     }
 
-    pub fn add_event_handler(
-        &mut self,
-        name: SymbolU32,
-        handler: wasmtime::component::TypedFunc<(u32,), ()>,
-    ) {
+    pub fn add_event_handler(&mut self, name: SymbolU32, handler: wasmtime::TypedFunc<i32, ()>) {
         self.event_handlers.insert(name, handler);
     }
 

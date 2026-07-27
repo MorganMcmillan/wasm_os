@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::task::yield_now;
 use tokio::time::sleep;
-use wasmtime::{Caller, Linker};
+use wasmtime::Linker;
 
 use crate::KERNEL;
 use crate::kernel::{Pid, ProcessContext};
@@ -164,7 +164,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 .unwrap()
                 .into_func()
                 .unwrap()
-                .typed::<(i32,), ()>(&caller)
+                .typed::<i32, ()>(&caller)
                 .unwrap();
 
             caller.data_mut().add_event_handler(interned_name, handler);
