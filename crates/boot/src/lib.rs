@@ -25,6 +25,9 @@ impl Guest for App {
     fn run() -> i32 {
         let mut frambuffer = [0; draw::SCREEN_SIZE];
 
+        wasm_os::spawn("color.wasm");
+        wasm_os::add_event_handler("set-color");
+
         loop {
             let mx = input::get_mouse_x() as usize;
             let my = input::get_mouse_y() as usize;
@@ -41,7 +44,10 @@ impl Guest for App {
         }
     }
 
-    fn set_color(length: u32) -> () {
-        let color_data = wasm_os::get_event_data(length);
+    fn set_color(_: u32) {
+        let color_data = wasm_os::get_event_data(1);
+        unsafe {
+            COLOR = color_data[0];
+        }
     }
 }

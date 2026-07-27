@@ -19,7 +19,7 @@ mod system_functions;
 mod wasm_process;
 
 const APP_NAME: &str = "wasm_os";
-const FRAMERATE: u32 = 120;
+// const FRAMERATE: u32 = 120;
 
 static mut KERNEL: OptionCell<Kernel> = const { OptionCell::none() };
 

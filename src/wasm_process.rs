@@ -97,11 +97,20 @@ impl WasmProcess {
 
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
                 KERNEL.set_current_event(&raw mut event);
-                let result = handler
-                    .call_async(&mut self.store, (event.data.len() as u32,))
+                let length = event.data.len();
+
+                let result = self
+                    .store
+                    .run_concurrent(async |accessor| -> wasmtime::Result<_> {
+                        handler.call_concurrent(accessor, (length as u32,)).await?;
+                        Ok(())
+                    })
                     .await;
 
                 if let Err(e) = result {
+                    let event_name = KERNEL.get_event_name(sym);
+                    eprintln!("Error in event handler {}: {}", event_name, e);
+                } else if let Ok(Err(e)) = result {
                     let event_name = KERNEL.get_event_name(sym);
                     eprintln!("Error in event handler {}: {}", event_name, e);
                 }
