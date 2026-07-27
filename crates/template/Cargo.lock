@@ -19,7 +19,6 @@ name = "colors"
 version = "0.1.0"
 dependencies = [
  "draw",
- "input",
  "wasm_os",
  "wit-bindgen",
 ]
@@ -74,13 +73,6 @@ dependencies = [
  "hashbrown",
  "serde",
  "serde_core",
-]
-
-[[package]]
-name = "input"
-version = "0.1.0"
-dependencies = [
- "wit-bindgen",
 ]
 
 [[package]]

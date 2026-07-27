@@ -93,10 +93,13 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
         },
     )?;
 
-    linker.func_wrap("get-event-data", |_: ProcessContext, _: ()| unsafe {
-        let event = KERNEL.get_current_event();
-        Ok((&event.data,))
-    })?;
+    linker.func_wrap(
+        "get-event-data",
+        |_: ProcessContext, (length,): (u32,)| unsafe {
+            let event = KERNEL.get_current_event();
+            Ok((&event.data[..length as usize],))
+        },
+    )?;
 
     linker.func_wrap("get-event-sender", |_: ProcessContext, _: ()| {
         let event = unsafe { KERNEL.get_current_event() };
@@ -119,8 +122,8 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
                     .get_process(ctx.data().pid)
                     .unwrap()
                     .instance
-                    .get_typed_func::<(i32,), ()>(&mut *ctx_ptr, name.as_ref())
-                    .unwrap()
+                    .get_typed_func::<(u32,), ()>(&mut *ctx_ptr, name.as_ref())
+                    .expect("Found event handler but its type was wrong: expected fn(u32).")
             };
 
             ctx.data_mut().add_event_handler(interned_name, handler);

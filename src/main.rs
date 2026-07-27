@@ -19,7 +19,7 @@ mod system_functions;
 mod wasm_process;
 
 const APP_NAME: &str = "wasm_os";
-const FRAMERATE: u32 = 60;
+const FRAMERATE: u32 = 120;
 
 static mut KERNEL: OptionCell<Kernel> = const { OptionCell::none() };
 
@@ -68,7 +68,7 @@ async fn main() -> wasmtime::Result<()> {
         .resizable()
         .build();
 
-    rl.set_target_fps(FRAMERATE);
+    // rl.set_target_fps(FRAMERATE);
 
     unsafe {
         KERNEL = OptionCell::new(create_kernel(&mut rl, &thread).await?);

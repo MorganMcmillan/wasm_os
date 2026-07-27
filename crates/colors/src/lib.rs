@@ -20,6 +20,7 @@ impl Guest for App {
             draw_all_colors(&mut framebuffer, offset);
             offset = offset.wrapping_add(1);
             draw::upload_framebuffer(&framebuffer);
+            wasm_os::yield_now();
         }
     }
 }

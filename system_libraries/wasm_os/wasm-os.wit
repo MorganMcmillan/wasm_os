@@ -8,7 +8,7 @@ world system {
     import exit: func(code: s32);
     import sleep: func(seconds: f64);
     import send-event: func(name: string, data: list<u8>, pid: s32) -> s32;
-    import get-event-data: func() -> list<u8>;
+    import get-event-data: func(length: u32) -> list<u8>;
     import get-event-sender: func() -> s32;
     import add-event-handler: func(name: string) -> s32;
     import remove-event-handler: func(name: string) -> s32;
