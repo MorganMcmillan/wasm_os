@@ -23,7 +23,6 @@ use wasmtime_wasi::WasiCtx;
 use crate::KERNEL;
 use crate::driver::Driver;
 use crate::event::Event;
-use crate::event::EventData;
 use crate::process::Process;
 use crate::wasm_process::WasmProcess;
 
@@ -277,20 +276,10 @@ impl Kernel {
     }
 
     pub fn send_event(&mut self, event_name: &str, event_data: &[u8], sender: Pid, receiver: Pid) {
-        if event_data.len() > size_of::<EventData>() {
-            // TODO: replace this panic with an error code or something
-            panic!(
-                "Event data cannot be larger than 512 bytes, instead got {} bytes",
-                event_data.len()
-            );
-        }
         let interned_name = self.interned_event_names.get_or_intern(event_name);
-        let mut copied_data = [0u8; size_of::<EventData>()];
-        for (i, &byte) in event_data.iter().enumerate() {
-            copied_data[i] = byte;
-        }
+        let copied_data = event_data.to_owned().into_boxed_slice();
 
-        let event = Event::new(copied_data, event_data.len() as u16, sender, interned_name);
+        let event = Event::new(copied_data, sender, interned_name);
 
         let receiver_process = self.get_process_mut(receiver).unwrap();
         receiver_process.store.data_mut().push_event(event);

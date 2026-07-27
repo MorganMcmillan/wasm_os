@@ -95,7 +95,7 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
 
     linker.func_wrap("get_event_data", |_: ProcessContext, _: ()| unsafe {
         let event = KERNEL.get_current_event();
-        Ok((&event.data[..event.length as usize],))
+        Ok((&event.data,))
     })?;
 
     linker.func_wrap("get_event_sender", |_: ProcessContext, _: ()| {
