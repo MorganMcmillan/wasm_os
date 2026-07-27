@@ -97,7 +97,7 @@ impl Driver for DrawState {
         let id = self.driver_id;
 
         linker.func_wrap(
-            "upload_framebuffer",
+            "upload-framebuffer",
             move |ctx: ProcessContext, (framebuffer,): (WasmList<u8>,)| {
                 unsafe {
                     let drawstate = KERNEL.get_driver::<Self>(id);
@@ -111,18 +111,6 @@ impl Driver for DrawState {
     }
 
     fn update(&mut self, rl: &mut raylib::RaylibHandle, thread: &raylib::RaylibThread) {
-        // unsafe {
-        //     if let Some((pid, address)) = self.framebuffer_address {
-        //         let process = KERNEL.get_process(pid).unwrap();
-        //         let framebuffer = process.get_memory(address as usize, FRAMEBUFFER_SIZE);
-        //         self.upload_framebuffer(framebuffer);
-        //     } else {
-        //         eprintln!("Warning: no framebuffer set!");
-        //     }
-        // }
-
-        // TODO: create a systsem function called `upload_framebuffer` to update the framebuffer
-        // when needed.
         let screen_width = rl.get_screen_width();
         let screen_height = rl.get_screen_height();
 

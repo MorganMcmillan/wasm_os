@@ -15,7 +15,7 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
     // Kernel methods
 
     linker.func_wrap(
-        "debug_print",
+        "debug-print",
         |ctx: StoreContextMut<Process>, (contents,): (WasmStr,)| {
             if let Ok(contents) = contents.to_str(&ctx) {
                 println!("{contents}");
@@ -24,11 +24,11 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
         },
     )?;
 
-    linker.func_wrap("get_pid", |ctx: ProcessContext, _: ()| {
+    linker.func_wrap("get-pid", |ctx: ProcessContext, _: ()| {
         Ok((ctx.data().pid as i32,))
     })?;
 
-    linker.func_wrap("get_parent_pid", |ctx: ProcessContext, _: ()| {
+    linker.func_wrap("get-parent-pid", |ctx: ProcessContext, _: ()| {
         Ok((ctx.data().parent_pid as i32,))
     })?;
 
@@ -76,7 +76,7 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
     // Inter-process communication
 
     linker.func_wrap(
-        "send_event",
+        "send-event",
         |ctx: ProcessContext, (name, data, to_pid): (WasmStr, WasmList<u8>, i32)| {
             let name = match name.to_str(&ctx) {
                 Ok(name) => name,
@@ -93,18 +93,18 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
         },
     )?;
 
-    linker.func_wrap("get_event_data", |_: ProcessContext, _: ()| unsafe {
+    linker.func_wrap("get-event-data", |_: ProcessContext, _: ()| unsafe {
         let event = KERNEL.get_current_event();
         Ok((&event.data,))
     })?;
 
-    linker.func_wrap("get_event_sender", |_: ProcessContext, _: ()| {
+    linker.func_wrap("get-event-sender", |_: ProcessContext, _: ()| {
         let event = unsafe { KERNEL.get_current_event() };
         Ok((event.sent_by_pid as i32,))
     })?;
 
     linker.func_wrap(
-        "add_event_handler",
+        "add-event-handler",
         |mut ctx: ProcessContext, (name,): (WasmStr,)| {
             let ctx_ptr = &mut ctx as *mut ProcessContext;
 
@@ -129,7 +129,7 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
     )?;
 
     linker.func_wrap(
-        "remove_event_handler",
+        "remove-event-handler",
         |mut ctx: ProcessContext, (name,): (WasmStr,)| {
             let name = match name.to_str(&ctx) {
                 Ok(o) => o,
@@ -143,7 +143,7 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
     )?;
 
     linker.func_wrap(
-        "set_process_name",
+        "set-process-name",
         |ctx: ProcessContext, (name,): (WasmStr,)| {
             let name = match name.to_str(&ctx) {
                 Ok(n) => n,
@@ -160,12 +160,12 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
         },
     )?;
 
-    linker.func_wrap("get_process_label", |caller: ProcessContext, _: ()| {
+    linker.func_wrap("get-process-label", |caller: ProcessContext, _: ()| {
         Ok((caller.data().label.to_owned(),))
     })?;
 
     linker.func_wrap(
-        "get_pid_by_name",
+        "get-pid-by-name",
         |ctx: ProcessContext, (name,): (WasmStr,)| {
             let name = match name.to_str(&ctx) {
                 Ok(n) => n,
@@ -179,7 +179,7 @@ pub fn load_system_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()>
 
     // Process
 
-    linker.func_wrap_async("yield_now", |_: ProcessContext, _: ()| {
+    linker.func_wrap_async("yield-now", |_: ProcessContext, _: ()| {
         Box::new(async {
             yield_now().await;
             Ok(())

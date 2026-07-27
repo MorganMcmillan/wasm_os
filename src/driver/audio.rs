@@ -96,7 +96,7 @@ impl Driver for AudioState {
         let id = self.driver_id;
 
         linker.func_wrap(
-            "play_sound",
+            "play-sound",
             move |mut ctx: ProcessContext, (sound,): (WasmList<u8>,)| {
                 let samples = PcmBuffer::new(sound.as_le_slice(&ctx));
                 ctx.data_mut()
