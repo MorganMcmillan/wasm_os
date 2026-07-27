@@ -53,7 +53,7 @@ impl WasmProcess {
         let run = self
             .instance
             .get_typed_func::<(), (i32,)>(&mut self.store, "run")
-            .unwrap();
+            .expect("Expected the program to have an exported run function.");
         let mut main_loop = Box::pin(run.call_async(&mut self.store, ()));
 
         loop {

@@ -226,6 +226,20 @@ pub fn yield_now() -> () {
         wit_import0();
     }
 }
+#[doc(hidden)]
+#[allow(non_snake_case, unused_unsafe)]
+pub unsafe fn _export_run_cabi<T_: Guest>() -> i32 {
+    unsafe {
+        let result0 = { T_::run() };
+        _rt::as_i32(result0)
+    }
+}
+pub trait Guest {
+    #[allow(async_fn_in_trait)]
+    fn run() -> i32;
+}
+#[doc(hidden)]
+pub(crate) use __export_world_system_cabi;
 mod _rt {
     #![allow(dead_code, unused_imports, clippy::all)]
     pub fn as_i32<T: AsI32>(t: T) -> i32 {
@@ -315,9 +329,11 @@ mod _rt {
     }
     extern crate alloc as alloc_crate;
 }
+#[doc(inline)]
+pub(crate) use __export_system_impl as export;
 #[inline(never)]
 #[doc(hidden)]
 pub fn __link_custom_section_describing_imports() {
     wit_bindgen::rt::maybe_link_cabi_realloc();
 }
-const _: &[u8] = b"package wasm-os:system;\n\nworld system {\n    import debug-print: func(message: string);\n    import get-pid: func() -> s32;\n    import get-parent-pid: func() -> s32;\n    import spawn: func(path: string) -> s32;\n    import exit: func(code: s32);\n    import sleep: func(seconds: f64);\n    import send-event: func(name: string, data: list<u8>, pid: s32) -> s32;\n    import get-event-data: func() -> list<u8>;\n    import get-event-sender: func() -> s32;\n    import add-event-handler: func(name: string) -> s32;\n    import remove-event-handler: func(name: string) -> s32;\n    import set-process-name: func(name: string) -> s32;\n    import get-process-label: func() -> string;\n    import get-pid-by-name: func(name: string) -> s32;\n    import yield-now: func();\n}\n";
+const _: &[u8] = b"package wasm-os:system;\n\nworld system {\n    import debug-print: func(message: string);\n    import get-pid: func() -> s32;\n    import get-parent-pid: func() -> s32;\n    import spawn: func(path: string) -> s32;\n    import exit: func(code: s32);\n    import sleep: func(seconds: f64);\n    import send-event: func(name: string, data: list<u8>, pid: s32) -> s32;\n    import get-event-data: func() -> list<u8>;\n    import get-event-sender: func() -> s32;\n    import add-event-handler: func(name: string) -> s32;\n    import remove-event-handler: func(name: string) -> s32;\n    import set-process-name: func(name: string) -> s32;\n    import get-process-label: func() -> string;\n    import get-pid-by-name: func(name: string) -> s32;\n    import yield-now: func();\n    export run: func() -> s32;\n}\n";

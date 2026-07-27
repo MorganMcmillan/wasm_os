@@ -1,5 +1,5 @@
-   0.069454037s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint: fingerprint error for input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("input", ["lib"], "/home/morgan/projects/wasm_os/system_libraries/input/src/lib.rs", Edition2024) }
-   0.069489814s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/input-d4467a550c2713ea/lib-input`
+   0.035351044s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint: fingerprint error for input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("input", ["lib"], "/home/morgan/projects/wasm_os/system_libraries/input/src/lib.rs", Edition2024) }
+   0.035396320s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/input-d4467a550c2713ea/lib-input`
 
 Caused by:
     No such file or directory (os error 2)
@@ -43,8 +43,8 @@ Stack backtrace:
   25: __libc_start_main_impl
              at ./csu/../csu/libc-start.c:360:3
   26: <unknown>
-   0.135132789s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint: fingerprint error for input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("input", ["lib"], "/home/morgan/projects/wasm_os/system_libraries/input/src/lib.rs", Edition2024) }
-   0.135160702s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/input-96d844a1663332b8/test-lib-input`
+   0.101583640s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint: fingerprint error for input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("input", ["lib"], "/home/morgan/projects/wasm_os/system_libraries/input/src/lib.rs", Edition2024) }
+   0.101608998s  INFO prepare_target{force=false package_id=input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input) target="input"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/input-96d844a1663332b8/test-lib-input`
 
 Caused by:
     No such file or directory (os error 2)
@@ -88,7 +88,20 @@ Stack backtrace:
   25: __libc_start_main_impl
              at ./csu/../csu/libc-start.c:360:3
   26: <unknown>
+   0.102036995s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint: stale: changed "/home/morgan/projects/wasm_os/system_libraries/wasm_os/src/lib.rs"
+   0.102044409s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint:           (vs) "/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/wasm_os-31fc98681f32714b/dep-lib-wasm_os"
+   0.102047535s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1785173501, nanos: 690104235 } < FileTime { seconds: 1785173551, nanos: 905107972 }
+   0.102166589s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint: fingerprint dirty for wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("wasm_os", ["lib"], "/home/morgan/projects/wasm_os/system_libraries/wasm_os/src/lib.rs", Edition2024) }
+   0.102173442s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/wasm_os-31fc98681f32714b/dep-lib-wasm_os", reference_mtime: FileTime { seconds: 1785173501, nanos: 690104235 }, stale: "/home/morgan/projects/wasm_os/system_libraries/wasm_os/src/lib.rs", stale_mtime: FileTime { seconds: 1785173551, nanos: 905107972 } }))
+   0.102438742s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint: stale: changed "/home/morgan/projects/wasm_os/system_libraries/wasm_os/src/lib.rs"
+   0.102442809s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint:           (vs) "/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/wasm_os-1ec24522f9031b82/dep-test-lib-wasm_os"
+   0.102445655s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1785173501, nanos: 691104235 } < FileTime { seconds: 1785173551, nanos: 905107972 }
+   0.102472646s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint: fingerprint dirty for wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("wasm_os", ["lib"], "/home/morgan/projects/wasm_os/system_libraries/wasm_os/src/lib.rs", Edition2024) }
+   0.102477825s  INFO prepare_target{force=false package_id=wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os) target="wasm_os"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/morgan/projects/wasm_os/system_libraries/target/debug/.fingerprint/wasm_os-1ec24522f9031b82/dep-test-lib-wasm_os", reference_mtime: FileTime { seconds: 1785173501, nanos: 691104235 }, stale: "/home/morgan/projects/wasm_os/system_libraries/wasm_os/src/lib.rs", stale_mtime: FileTime { seconds: 1785173551, nanos: 905107972 } }))
+    Checking wasm_os v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/wasm_os)
     Checking input v0.1.0 (/home/morgan/projects/wasm_os/system_libraries/input)
-error: could not compile `input` (lib) due to 1 previous error
-warning: build failed, waiting for other jobs to finish...
 error: could not compile `input` (lib test) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `input` (lib) due to 1 previous error
+error: could not compile `wasm_os` (lib) due to 2 previous errors; 2 warnings emitted
+error: could not compile `wasm_os` (lib test) due to 2 previous errors; 2 warnings emitted

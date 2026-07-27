@@ -63,6 +63,7 @@ async fn main() -> wasmtime::Result<()> {
             driver::draw::FRAMEBUFFER_WIDTH as i32 * 2,
             driver::draw::FRAMEBUFFER_HEIGHT as i32 * 2,
         )
+        .vsync()
         .title("WasmOS Test")
         .resizable()
         .build();
