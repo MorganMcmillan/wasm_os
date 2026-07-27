@@ -44,21 +44,21 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         },
     )?;
 
-    linker.func_wrap("env", "get_pid", |caller: ProcessContext| -> i32 {
-        caller.data().pid as i32
+    linker.func_wrap("env", "get_pid", |ctx: ProcessContext| -> i32 {
+        ctx.data().pid as i32
     })?;
 
-    linker.func_wrap("env", "get_parent_pid", |caller: ProcessContext| -> i32 {
-        caller.data().parent_pid as i32
+    linker.func_wrap("env", "get_parent_pid", |ctx: ProcessContext| -> i32 {
+        ctx.data().parent_pid as i32
     })?;
 
     // Return Pid
     linker.func_wrap_async(
         "env",
         "spawn",
-        |caller: ProcessContext, (path_ptr, path_len): (i32, i32)| {
-            let result = get_str(&caller, path_ptr, path_len);
-            let pid = caller.data().pid;
+        |ctx: ProcessContext, (path_ptr, path_len): (i32, i32)| {
+            let result = get_str(&ctx, path_ptr, path_len);
+            let pid = ctx.data().pid;
 
             Box::new(async move {
                 unsafe {
@@ -134,7 +134,6 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             let buf_len = buf_len as usize;
 
             let event = KERNEL.get_current_event();
-            // WARNING: may cause an issue
             let process = KERNEL.get_process_mut(caller.data().pid).unwrap();
             if event.data.len() < buf_len {
                 process.set_memory(buf_ptr, &event.data);
