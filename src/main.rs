@@ -56,6 +56,9 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
 
 #[tokio::main(flavor = "local")]
 async fn main() -> wasmtime::Result<()> {
+    // Disable raylib's logging
+    let _ = set_trace_log_callback(|_, _| {});
+
     let (mut rl, thread) = raylib::init()
         .size(
             driver::draw::FRAMEBUFFER_WIDTH as i32 * 2,
