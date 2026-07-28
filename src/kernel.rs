@@ -300,11 +300,7 @@ impl Kernel {
         linker: &mut ProcessLinker,
         imported_modules: &[&str],
     ) -> wasmtime::Result<()> {
-        for driver_name in imported_modules
-            .iter()
-            .copied()
-            .filter_map(|m| m.strip_prefix("driver_"))
-        {
+        for driver_name in imported_modules.iter().copied() {
             if let Some(driver) = self.get_driver_by_name(driver_name) {
                 driver.register_functions(linker)?;
             }

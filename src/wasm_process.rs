@@ -44,11 +44,22 @@ pub struct WasmProcess {
     pub store: ProcessStore,
 }
 
-fn get_imported_modules(module: &Module) -> Vec<&str> {
+// Returns the names of imported drivers and libraries.
+// Note: the "driver_" prefix of drivers is removed.
+fn get_imported_modules(module: &Module) -> (Vec<&str>, Vec<&str>) {
     let mut modules = module.imports().map(|i| i.module()).collect::<HashSet<_>>();
     // Ignore as it's given my the kernel's functions, and not a driver or library.
     modules.remove("env");
-    modules.into_iter().collect()
+    let mut drivers = Vec::with_capacity(modules.len());
+    let mut libraries = Vec::with_capacity(modules.len());
+    for module in modules {
+        if let Some(driver) = module.strip_prefix("driver_") {
+            drivers.push(driver);
+        } else {
+            libraries.push(module);
+        }
+    }
+    (drivers, libraries)
 }
 
 impl WasmProcess {
@@ -57,16 +68,16 @@ impl WasmProcess {
         let module = Module::new(engine, binary)?;
         let mut linker = wasmtime::Linker::new(engine);
 
-        let imported_modules = get_imported_modules(&module);
-        println!("Imported modules: {:?}", imported_modules);
+        let (imported_drivers, _imported_libraries) = get_imported_modules(&module);
 
         // Load functions
         load_system_functions(&mut linker)?;
         unsafe {
             // TODO: replace with checking which drivers the compiled module references and only
             // loading the ones it needs
-            KERNEL.load_driver_functions(&mut linker, &imported_modules)?;
+            KERNEL.load_driver_functions(&mut linker, &imported_drivers)?;
         }
+        // TODO: look inside the `lib` directory and load libraries from `imported_libraries`
 
         // All wasm objects operate in the context of a store.
         // A store is used to store host-specific data of a given type.
