@@ -1,9 +1,11 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::io;
 use std::io::ErrorKind::NotFound;
 use std::io::Read;
 use std::path::Path;
+use std::path::PathBuf;
 use std::ptr::NonNull;
 use std::time::Duration;
 
@@ -168,7 +170,25 @@ impl Kernel {
         Ok(pid)
     }
 
-    fn read_file(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, CreateProcessError> {
+    // Files
+
+    pub fn directory_exists(&self, path: impl AsRef<Path>) -> bool {
+        self.ambient_dir.is_dir(path)
+    }
+
+    pub fn file_exists(&self, path: impl AsRef<Path>) -> bool {
+        self.ambient_dir.is_file(path)
+    }
+
+    pub fn fs_object_exists(&self, path: impl AsRef<Path>) -> bool {
+        self.ambient_dir.exists(path)
+    }
+
+    pub fn get_absolute_path(&self, path: impl AsRef<Path>) -> io::Result<PathBuf> {
+        self.ambient_dir.canonicalize(path)
+    }
+
+    pub fn read_file(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, CreateProcessError> {
         let mut file = match self.ambient_dir.open(path.as_ref()) {
             Ok(f) => f,
             Err(e) => match e.kind() {
@@ -204,7 +224,7 @@ impl Kernel {
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
 
-        let mut process = Process::new(pid, parent, label);
+        let mut process = Process::new(pid, parent, label, PathBuf::new());
 
         for driver in self.drivers.iter_mut() {
             if let Some(process_state) = driver.create_process_state() {

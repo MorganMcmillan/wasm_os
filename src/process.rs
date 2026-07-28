@@ -2,11 +2,12 @@
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
 
+use crate::KERNEL;
 use crate::event::Event;
 use crate::kernel::Pid;
 
@@ -55,6 +56,40 @@ impl Process {
 
     pub async fn kill(&mut self) {
         let _ = self.join_handle.as_mut().unwrap().await;
+    }
+
+    // Files
+
+    pub fn read_whole_file(&self, path: impl AsRef<Path>) -> Option<Vec<u8>> {
+        let mut cwd = self.current_working_directory.clone();
+        cwd.push(path);
+        unsafe { KERNEL.read_file(&cwd).ok() }
+    }
+
+    fn set_current_directory(&mut self, path: &Path) -> i32 {
+        unsafe {
+            let Ok(path) = KERNEL.get_absolute_path(path) else {
+                return -2;
+            };
+
+            if KERNEL.directory_exists(&path) {
+                self.current_working_directory = path;
+                0
+            } else {
+                -1
+            }
+        }
+    }
+
+    pub fn change_directory(&mut self, path: impl AsRef<Path>) -> i32 {
+        let path = path.as_ref();
+        if let Ok(abs_path) = path.strip_prefix("/") {
+            self.set_current_directory(abs_path)
+        } else {
+            let mut cwd = self.current_working_directory.clone();
+            cwd.push(path);
+            self.set_current_directory(&cwd)
+        }
     }
 
     // Events
