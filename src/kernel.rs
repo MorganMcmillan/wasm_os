@@ -360,7 +360,7 @@ impl Kernel {
     pub fn get_current_event(&self) -> &Event {
         unsafe {
             self.current_event
-                .expect("Attempted to call an event handler without any event data.")
+                .expect("Cannot get event data when outside of event handler or when handler is called without an event.")
                 .as_ref()
         }
     }
