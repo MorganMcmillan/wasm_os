@@ -10,9 +10,9 @@ use crate::kernel::{Pid, ProcessContext};
 use crate::process::Process;
 
 #[allow(mismatched_lifetime_syntaxes)]
-pub fn get_memory(caller: *const ProcessContext, mem_ptr: i32, mem_len: i32) -> Result<&[u8], i32> {
+pub fn get_memory(ctx: *const ProcessContext, mem_ptr: i32, mem_len: i32) -> Result<&[u8], i32> {
     unsafe {
-        let process = KERNEL.get_process_mut((*caller).data().pid).unwrap();
+        let process = KERNEL.get_process_mut((*ctx).data().pid).unwrap();
 
         let mem = process.get_memory(mem_ptr as usize, mem_len as usize);
         Ok(mem)
@@ -20,10 +20,10 @@ pub fn get_memory(caller: *const ProcessContext, mem_ptr: i32, mem_len: i32) -> 
 }
 
 #[allow(mismatched_lifetime_syntaxes)]
-fn get_str(caller: *const ProcessContext, str_ptr: i32, str_len: i32) -> Result<&str, i32> {
-    let string = get_memory(caller, str_ptr, str_len)?;
+fn get_str(ctx: *const ProcessContext, str_ptr: i32, str_len: i32) -> Result<&str, i32> {
+    let string = get_memory(ctx, str_ptr, str_len)?;
     let Ok(string) = str::from_utf8(string) else {
-        return Err(2);
+        return Err(-2);
     };
     Ok(string)
 }
@@ -259,6 +259,21 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             };
 
             unsafe { KERNEL.get_pid_by_name(name) as i32 }
+        },
+    )?;
+
+    // Filesystem
+
+    linker.func_wrap(
+        "env",
+        "change_directory",
+        |mut ctx: ProcessContext, path_ptr: i32, path_len: i32| -> i32 {
+            let path = match get_str(&ctx, path_ptr, path_len) {
+                Ok(p) => p,
+                Err(e) => return e,
+            };
+
+            ctx.data_mut().change_directory(path)
         },
     )?;
 

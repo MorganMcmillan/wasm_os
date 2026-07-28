@@ -9,6 +9,9 @@ pub mod draw;
 pub mod input;
 
 pub trait Driver: Any {
+    // This driver's name
+    fn name(&self) -> &'static str;
+
     // Regester wrapped functions for a new process
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()>;
 

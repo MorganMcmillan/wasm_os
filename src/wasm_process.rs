@@ -1,5 +1,7 @@
 #![allow(static_mut_refs)]
 
+use std::collections::HashSet;
+use std::mem::transmute;
 use std::task::Poll::{Pending, Ready};
 use std::task::{Context, Waker};
 
@@ -15,11 +17,17 @@ pub type ProcessStore = Store<Process>;
 
 /// Returns a view of a WASM memory.
 /// Note: this function exists entirely because I was having borrow errors.
-#[allow(invalid_reference_casting)]
+#[allow(invalid_reference_casting, clippy::transmute_ptr_to_ref)]
 fn get_memory_slice<'a>(instance: &'a Instance, store: &'a ProcessStore) -> &'a [u8] {
     let store_ptr = store as *const ProcessStore as *mut ProcessStore;
     unsafe {
-        let memory = instance.get_memory(&mut *store_ptr, "memory").unwrap();
+        // TODO: replace string lookup with addding the index of "memory" to the process
+        let memory = instance
+            .get_memory(
+                transmute::<*mut ProcessStore, &mut ProcessStore>(store_ptr),
+                "memory",
+            )
+            .unwrap();
         memory.data(store)
     }
 }
@@ -36,16 +44,28 @@ pub struct WasmProcess {
     pub store: ProcessStore,
 }
 
+fn get_imported_modules(module: &Module) -> Vec<&str> {
+    let mut modules = module.imports().map(|i| i.module()).collect::<HashSet<_>>();
+    // Ignore as it's given my the kernel's functions, and not a driver or library.
+    modules.remove("env");
+    modules.into_iter().collect()
+}
+
 impl WasmProcess {
     pub async fn new(binary: Vec<u8>, engine: &Engine, process: Process) -> wasmtime::Result<Self> {
         // Modules are compiled from text or binary
         let module = Module::new(engine, binary)?;
         let mut linker = wasmtime::Linker::new(engine);
 
+        let imported_modules = get_imported_modules(&module);
+        println!("Imported modules: {:?}", imported_modules);
+
         // Load functions
         load_system_functions(&mut linker)?;
         unsafe {
-            KERNEL.load_driver_functions(&mut linker)?;
+            // TODO: replace with checking which drivers the compiled module references and only
+            // loading the ones it needs
+            KERNEL.load_driver_functions(&mut linker, &imported_modules)?;
         }
 
         // All wasm objects operate in the context of a store.

@@ -1,4 +1,4 @@
-#[link(wasm_import_module = "env")]
+#[link(wasm_import_module = "driver_audio")]
 unsafe extern "C" {
     fn extern_play_sound(sound_ptr: *const u8, sound_len: i32) -> i32;
 }

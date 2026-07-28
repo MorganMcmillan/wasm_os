@@ -1,4 +1,4 @@
-#[link(wasm_import_module = "env")]
+#[link(wasm_import_module = "driver_input")]
 unsafe extern "C" {
     #[link_name = "get_mouse_x"]
     fn extern_get_mouse_x() -> i32;

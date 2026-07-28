@@ -76,6 +76,10 @@ impl AudioState {
 }
 
 impl Driver for AudioState {
+    fn name(&self) -> &'static str {
+        "audio"
+    }
+
     fn update(&mut self, _rl: &mut raylib::RaylibHandle, _thread: &raylib::RaylibThread) {}
 
     fn accept_id(&mut self, id: usize) {
@@ -93,10 +97,11 @@ impl Driver for AudioState {
     }
 
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+        let name = self.name();
         let id = self.driver_id;
 
         linker.func_wrap(
-            "env",
+            name,
             "play_sound",
             move |mut ctx: ProcessContext, sound_ptr: i32, sound_len: i32| {
                 let sound = match system_functions::get_memory(&ctx, sound_ptr, sound_len) {

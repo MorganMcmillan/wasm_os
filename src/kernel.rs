@@ -66,7 +66,7 @@ fn create_system_folders(root_dir: &cap_std::fs::Dir) {
 }
 
 impl Kernel {
-    pub fn new(root_dir: &str, mut drivers: Vec<Box<dyn Driver>>) -> Self {
+    pub fn new(root_dir: &Path, mut drivers: Vec<Box<dyn Driver>>) -> Self {
         let mut config = Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
         config.epoch_interruption(true);
@@ -85,7 +85,7 @@ impl Kernel {
         });
 
         let ambient_dir =
-            cap_std::fs::Dir::open_ambient_dir(Path::new(root_dir), ambient_authority()).unwrap();
+            cap_std::fs::Dir::open_ambient_dir(root_dir, ambient_authority()).unwrap();
 
         create_system_folders(&ambient_dir);
 
@@ -102,15 +102,6 @@ impl Kernel {
 
     pub fn root_exited(&self) -> bool {
         !matches!(self.processes.first(), Some(Some(_)))
-    }
-
-    // Loads each driver's functions.
-    pub fn load_driver_functions(&mut self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
-        for driver in self.drivers.iter_mut() {
-            driver.register_functions(linker)?;
-        }
-
-        Ok(())
     }
 
     pub async fn run_boot(&mut self) {
@@ -293,6 +284,34 @@ impl Kernel {
     }
 
     // Drivers
+
+    pub fn get_driver_by_name(&mut self, name: &str) -> Option<&mut dyn Driver> {
+        for driver in self.drivers.iter_mut() {
+            if driver.name() == name {
+                return Some(driver.as_mut());
+            }
+        }
+        None
+    }
+
+    // Loads each driver's functions.
+    pub fn load_driver_functions(
+        &mut self,
+        linker: &mut ProcessLinker,
+        imported_modules: &[&str],
+    ) -> wasmtime::Result<()> {
+        for driver_name in imported_modules
+            .iter()
+            .copied()
+            .filter_map(|m| m.strip_prefix("driver_"))
+        {
+            if let Some(driver) = self.get_driver_by_name(driver_name) {
+                driver.register_functions(linker)?;
+            }
+        }
+
+        Ok(())
+    }
 
     pub fn get_driver<T: Any>(&mut self, id: usize) -> &mut T {
         self.drivers[id].as_any().downcast_mut().unwrap()

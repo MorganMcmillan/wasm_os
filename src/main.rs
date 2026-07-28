@@ -5,7 +5,7 @@ use tokio::task::{spawn_local, yield_now};
 
 use crate::driver::audio::AudioState;
 use crate::driver::draw::DrawState;
-use crate::driver::input::MouseState;
+use crate::driver::input::InputState;
 use crate::kernel::Kernel;
 use crate::option_cell::OptionCell;
 
@@ -45,14 +45,12 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
     .expect("Could not create application directory.");
 
     let drawstate = Box::new(DrawState::new(texture));
-
-    let mousestate = Box::new(MouseState::new());
-
+    let inputstate = Box::new(InputState::new());
     let audiostate = Box::new(AudioState::new());
 
     Ok(Kernel::new(
-        &root_dir.to_string_lossy(),
-        vec![drawstate, mousestate, audiostate],
+        &root_dir,
+        vec![drawstate, inputstate, audiostate],
     ))
 }
 

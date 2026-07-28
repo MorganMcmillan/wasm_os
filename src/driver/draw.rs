@@ -85,6 +85,10 @@ impl DrawState {
 }
 
 impl Driver for DrawState {
+    fn name(&self) -> &'static str {
+        "draw"
+    }
+
     fn accept_id(&mut self, id: usize) {
         self.driver_id = id;
     }
@@ -94,10 +98,11 @@ impl Driver for DrawState {
     }
 
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+        let name = self.name();
         let id = self.driver_id;
 
         linker.func_wrap(
-            "env",
+            name,
             "upload_framebuffer",
             move |ctx: ProcessContext, framebuffer: i32| {
                 unsafe {
@@ -110,6 +115,8 @@ impl Driver for DrawState {
                 Ok(())
             },
         )?;
+
+        // TODO: add drawing functions like square and circle
 
         Ok(())
     }
