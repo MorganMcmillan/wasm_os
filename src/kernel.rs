@@ -319,14 +319,34 @@ impl Kernel {
         self.interned_event_names.get_or_intern(name)
     }
 
-    pub fn send_event(&mut self, event_name: &str, event_data: &[u8], sender: Pid, receiver: Pid) {
+    pub fn send_event(
+        &mut self,
+        event_name: &str,
+        event_data: &[u8],
+        sender: Pid,
+        receiver: Pid,
+    ) -> i32 {
         let interned_name = self.interned_event_names.get_or_intern(event_name);
         let copied_data = event_data.to_owned().into_boxed_slice();
 
         let event = Event::new(copied_data, sender, interned_name);
 
-        let receiver_process = self.get_process_mut(receiver).unwrap();
-        receiver_process.store.data_mut().push_event(event);
+        if let Some(receiver_process) = self.get_process_mut(receiver) {
+            receiver_process.store.data_mut().push_event(event);
+            0
+        } else {
+            -1
+        }
+    }
+
+    pub fn resend_event(&mut self, event: &Event, sender: Pid, receiver: Pid) -> i32 {
+        if let Some(receiver_process) = self.get_process_mut(receiver) {
+            let event = Event::from_resent(event, sender);
+            receiver_process.store.data_mut().push_event(event);
+            0
+        } else {
+            -1
+        }
     }
 
     pub fn set_current_event(&mut self, event_ptr: *mut Event) {

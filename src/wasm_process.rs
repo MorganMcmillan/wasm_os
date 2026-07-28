@@ -158,11 +158,11 @@ impl WasmProcess {
         unsafe {
             let self_ptr = self as *mut Self;
 
-            let sym = event.interned_name;
+            let sym = event.interned_name();
 
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
                 KERNEL.set_current_event(&raw mut event);
-                let length = event.data.len();
+                let length = event.data().len();
 
                 let result = handler.call_async(&mut self.store, length as i32).await;
 

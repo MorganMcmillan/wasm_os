@@ -118,11 +118,19 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Err(e) => return e,
             };
 
-            unsafe {
-                KERNEL.send_event(name, data, caller.data().pid, to_pid as Pid);
-            }
+            unsafe { KERNEL.send_event(name, data, caller.data().pid, to_pid as Pid) }
+        },
+    )?;
 
-            0
+    linker.func_wrap(
+        "env",
+        "resend_event",
+        |ctx: ProcessContext, to_pid: i32| -> i32 {
+            unsafe {
+                let event = KERNEL.get_current_event();
+                let pid = ctx.data().pid;
+                KERNEL.resend_event(event, pid, to_pid as Pid)
+            }
         },
     )?;
 
@@ -134,11 +142,12 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             let buf_len = buf_len as usize;
 
             let event = KERNEL.get_current_event();
+            let data = event.data();
             let process = KERNEL.get_process_mut(caller.data().pid).unwrap();
-            if event.data.len() < buf_len {
-                process.set_memory(buf_ptr, &event.data);
+            if data.len() < buf_len {
+                process.set_memory(buf_ptr, data);
             } else {
-                process.set_memory(buf_ptr, &event.data[..buf_len]);
+                process.set_memory(buf_ptr, &data[..buf_len]);
             }
         },
     )?;
