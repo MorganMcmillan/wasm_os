@@ -176,10 +176,12 @@ impl Kernel {
         self.ambient_dir.is_dir(path)
     }
 
+    #[allow(unused)]
     pub fn file_exists(&self, path: impl AsRef<Path>) -> bool {
         self.ambient_dir.is_file(path)
     }
 
+    #[allow(unused)]
     pub fn fs_object_exists(&self, path: impl AsRef<Path>) -> bool {
         self.ambient_dir.exists(path)
     }
@@ -224,7 +226,18 @@ impl Kernel {
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
 
-        let mut process = Process::new(pid, parent, label, PathBuf::new());
+        let cwd = if parent == 0 {
+            PathBuf::new()
+        } else {
+            self.get_process(parent)
+                .unwrap()
+                .store
+                .data()
+                .current_working_directory
+                .clone()
+        };
+
+        let mut process = Process::new(pid, parent, label, cwd);
 
         for driver in self.drivers.iter_mut() {
             if let Some(process_state) = driver.create_process_state() {
