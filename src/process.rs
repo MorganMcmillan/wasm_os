@@ -2,6 +2,7 @@
 
 use std::any::Any;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
@@ -10,31 +11,34 @@ use crate::event::Event;
 use crate::kernel::Pid;
 
 /// A process represents the state of a running Webassembly process.
+#[derive(Default)]
 pub struct Process {
     pub pid: Pid,
     pub parent_pid: Pid,
+    pub label: Box<str>,
+    pub current_working_directory: PathBuf,
+    pub join_handle: Option<JoinHandle<i32>>,
     pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
-    pub join_handle: Option<JoinHandle<i32>>,
-    pub label: Box<str>,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
 
 #[allow(dead_code)]
 impl Process {
-    pub fn new(pid: Pid, parent_pid: Pid, label: impl Into<Box<str>>) -> Self {
+    pub fn new(
+        pid: Pid,
+        parent_pid: Pid,
+        label: impl Into<Box<str>>,
+        current_working_directory: PathBuf,
+    ) -> Self {
         Self {
             pid,
             parent_pid,
-            exit_code: None,
-            children: Vec::new(),
-            event_queue: Vec::new(),
-            event_handlers: HashMap::new(),
-            join_handle: None,
             label: label.into(),
-            driver_states: HashMap::new(),
+            current_working_directory,
+            ..Default::default()
         }
     }
 
