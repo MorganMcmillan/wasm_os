@@ -2,11 +2,13 @@
 
 use std::collections::HashSet;
 use std::mem::transmute;
+use std::path::PathBuf;
 use std::task::Poll::{Pending, Ready};
 use std::task::{Context, Waker};
 
 use crate::KERNEL;
 use crate::event::Event;
+use crate::kernel::ProcessLinker;
 use crate::process::Process;
 use crate::ptr_cell::PtrCell;
 use crate::system_functions::load_system_functions;
@@ -52,13 +54,37 @@ fn get_imported_modules(module: &Module) -> (Vec<&str>, Vec<&str>) {
     modules.into_iter().partition(|m| m.starts_with("driver_"))
 }
 
+// Dynamically loads the wasm library file
+fn load_libraries(
+    linker: &mut ProcessLinker,
+    mut store: &mut ProcessStore,
+    engine: &Engine,
+    libraries: &[&str],
+) -> wasmtime::Result<()> {
+    for library in libraries.iter().cloned() {
+        let mut library_path = PathBuf::new();
+        library_path.push("lib");
+        library_path.push(library);
+        library_path.set_extension("wasm");
+
+        unsafe {
+            if let Ok(bytes) = KERNEL.read_file(&library_path) {
+                let module = Module::new(engine, bytes)?;
+                linker.module(&mut store, library, &module)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 impl WasmProcess {
     pub async fn new(binary: Vec<u8>, engine: &Engine, process: Process) -> wasmtime::Result<Self> {
         // Modules are compiled from text or binary
         let module = Module::new(engine, binary)?;
         let mut linker = wasmtime::Linker::new(engine);
 
-        let (imported_drivers, _imported_libraries) = get_imported_modules(&module);
+        let (imported_drivers, imported_libraries) = get_imported_modules(&module);
 
         // Load functions
         load_system_functions(&mut linker)?;
@@ -68,10 +94,14 @@ impl WasmProcess {
             KERNEL.load_driver_functions(&mut linker, &imported_drivers)?;
         }
         // TODO: look inside the `lib` directory and load libraries from `imported_libraries`
+        println!("Imported drivers: {:?}", imported_drivers);
+        println!("Imported libraries: {:?}", imported_libraries);
 
         // All wasm objects operate in the context of a store.
         // A store is used to store host-specific data of a given type.
         let mut store = Store::new(engine, process);
+
+        load_libraries(&mut linker, &mut store, engine, &imported_libraries)?;
 
         // Configure preemptive interuption
         // TODO: figure out how this actually works
