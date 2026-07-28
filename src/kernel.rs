@@ -17,7 +17,6 @@ use tokio::task;
 use wasmtime::Caller;
 use wasmtime::Config;
 use wasmtime::Engine;
-use wasmtime_wasi::WasiCtx;
 
 use crate::KERNEL;
 use crate::driver::Driver;
@@ -48,7 +47,6 @@ pub struct Kernel {
     interned_event_names: StringInterner<StringBackend>,
     // The top-level directory for which programs can be executed from
     ambient_dir: cap_std::fs::Dir,
-    root_dir_path: Box<str>,
 }
 
 unsafe impl Send for Kernel {}
@@ -77,6 +75,12 @@ impl Kernel {
             engine_clone.increment_epoch();
         });
 
+        let ambient_dir =
+            cap_std::fs::Dir::open_ambient_dir(Path::new(root_dir), ambient_authority()).unwrap();
+
+        let _ = ambient_dir.create_dir("bios");
+        let _ = ambient_dir.create_dir("rom");
+
         Self {
             engine,
             drivers,
@@ -84,12 +88,7 @@ impl Kernel {
             process_names: HashMap::new(),
             current_event: None,
             interned_event_names: StringInterner::new(),
-            ambient_dir: cap_std::fs::Dir::open_ambient_dir(
-                Path::new(root_dir),
-                ambient_authority(),
-            )
-            .unwrap(),
-            root_dir_path: root_dir.into(),
+            ambient_dir,
         }
     }
 
@@ -180,10 +179,6 @@ impl Kernel {
         Ok(bytes)
     }
 
-    fn get_root_dir(&self) -> &str {
-        &self.root_dir_path
-    }
-
     pub async fn create_process(
         &mut self,
         path: &str,
@@ -195,10 +190,6 @@ impl Kernel {
 
         let binary = self.read_file(path)?;
 
-        let mut builder = WasiCtx::builder();
-        builder.initial_cwd(self.get_root_dir());
-        let wasi_ctx = builder.build();
-
         // TODO: figure out better way to handle process ids
         let pid = self.processes.len() as u16 + 1;
         let path = std::path::Path::new(path);
@@ -207,7 +198,7 @@ impl Kernel {
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
 
-        let mut process = Process::new(wasi_ctx, pid, parent, label);
+        let mut process = Process::new(pid, parent, label);
 
         for driver in self.drivers.iter_mut() {
             if let Some(process_state) = driver.create_process_state() {
