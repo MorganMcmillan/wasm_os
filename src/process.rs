@@ -18,6 +18,7 @@ pub struct Process {
     pub parent_pid: Pid,
     pub label: Box<str>,
     pub current_working_directory: PathBuf,
+    // pub file_handles: FileHandles,
     pub join_handle: Option<JoinHandle<i32>>,
     pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
@@ -68,6 +69,7 @@ impl Process {
 
     fn set_current_directory(&mut self, path: &Path) -> i32 {
         unsafe {
+            // TODO: do we even need this? Surely the relative path should resolve to a file.
             let Ok(path) = KERNEL.get_absolute_path(path) else {
                 return -2;
             };
@@ -81,16 +83,22 @@ impl Process {
         }
     }
 
-    pub fn change_directory(&mut self, path: impl AsRef<Path>) -> i32 {
-        let path = path.as_ref();
+    // Gets the absolute path relative to this process' current working directory.
+    fn get_absolute_path(&self, path: &Path) -> PathBuf {
         if let Ok(abs_path) = path.strip_prefix("/") {
-            self.set_current_directory(abs_path)
+            abs_path.to_path_buf()
         } else {
-            let mut cwd = self.current_working_directory.clone();
-            cwd.push(path);
-            self.set_current_directory(&cwd)
+            let mut relative_path = self.current_working_directory.clone();
+            relative_path.push(path);
+            relative_path
         }
     }
+
+    pub fn change_directory(&mut self, path: impl AsRef<Path>) -> i32 {
+        self.set_current_directory(&self.get_absolute_path(path.as_ref()))
+    }
+
+    // TODO: add `open_file`
 
     // Events
 

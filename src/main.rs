@@ -9,8 +9,10 @@ use crate::driver::input::InputState;
 use crate::kernel::Kernel;
 use crate::option_cell::OptionCell;
 
+// TODO: move into lib.rs
 mod driver;
 mod event;
+mod id;
 mod kernel;
 mod option_cell;
 mod process;
