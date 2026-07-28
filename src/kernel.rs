@@ -56,6 +56,13 @@ const BIOS_BOOT_PROCESS: &str = "bios/boot.wasm";
 const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
+fn create_system_folders(root_dir: &cap_std::fs::Dir) {
+    // TODO: somehow create a default boot.wasm
+    let _ = root_dir.create_dir("bios");
+    let _ = root_dir.create_dir("rom");
+    let _ = root_dir.create_dir("lib");
+}
+
 impl Kernel {
     pub fn new(root_dir: &str, mut drivers: Vec<Box<dyn Driver>>) -> Self {
         let mut config = Config::new();
@@ -78,8 +85,7 @@ impl Kernel {
         let ambient_dir =
             cap_std::fs::Dir::open_ambient_dir(Path::new(root_dir), ambient_authority()).unwrap();
 
-        let _ = ambient_dir.create_dir("bios");
-        let _ = ambient_dir.create_dir("rom");
+        create_system_folders(&ambient_dir);
 
         Self {
             engine,
