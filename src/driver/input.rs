@@ -30,7 +30,7 @@ impl InputState {
 
 impl Driver for InputState {
     fn name(&self) -> &'static str {
-        "input"
+        "driver_input"
     }
 
     fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {

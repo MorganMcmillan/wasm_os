@@ -9,7 +9,8 @@ pub mod draw;
 pub mod input;
 
 pub trait Driver: Any {
-    // This driver's name
+    // This driver's name.
+    // IMPORTANT: this name MUST start with "driver_"
     fn name(&self) -> &'static str;
 
     // Regester wrapped functions for a new process

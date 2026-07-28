@@ -45,21 +45,11 @@ pub struct WasmProcess {
 }
 
 // Returns the names of imported drivers and libraries.
-// Note: the "driver_" prefix of drivers is removed.
 fn get_imported_modules(module: &Module) -> (Vec<&str>, Vec<&str>) {
     let mut modules = module.imports().map(|i| i.module()).collect::<HashSet<_>>();
     // Ignore as it's given my the kernel's functions, and not a driver or library.
     modules.remove("env");
-    let mut drivers = Vec::with_capacity(modules.len());
-    let mut libraries = Vec::with_capacity(modules.len());
-    for module in modules {
-        if let Some(driver) = module.strip_prefix("driver_") {
-            drivers.push(driver);
-        } else {
-            libraries.push(module);
-        }
-    }
-    (drivers, libraries)
+    modules.into_iter().partition(|m| m.starts_with("driver_"))
 }
 
 impl WasmProcess {

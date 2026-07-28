@@ -77,7 +77,7 @@ impl AudioState {
 
 impl Driver for AudioState {
     fn name(&self) -> &'static str {
-        "audio"
+        "driver_audio"
     }
 
     fn update(&mut self, _rl: &mut raylib::RaylibHandle, _thread: &raylib::RaylibThread) {}

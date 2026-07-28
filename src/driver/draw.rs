@@ -86,7 +86,7 @@ impl DrawState {
 
 impl Driver for DrawState {
     fn name(&self) -> &'static str {
-        "draw"
+        "driver_draw"
     }
 
     fn accept_id(&mut self, id: usize) {
