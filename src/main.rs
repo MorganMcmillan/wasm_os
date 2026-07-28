@@ -22,6 +22,7 @@ mod wasm_process;
 
 const APP_NAME: &str = "wasm_os";
 // const FRAMERATE: u32 = 120;
+const DISABLE_LOGGING: bool = true;
 
 static mut KERNEL: OptionCell<Kernel> = const { OptionCell::none() };
 
@@ -59,7 +60,9 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
 #[tokio::main(flavor = "local")]
 async fn main() -> wasmtime::Result<()> {
     // Disable raylib's logging
-    let _ = set_trace_log_callback(|_, _| {});
+    if DISABLE_LOGGING {
+        let _ = set_trace_log_callback(|_, _| {});
+    }
 
     let (mut rl, thread) = raylib::init()
         .size(
@@ -80,6 +83,7 @@ async fn main() -> wasmtime::Result<()> {
         let join_handle = spawn_local(async move {
             while !rl.window_should_close() {
                 if KERNEL.root_exited() {
+                    println!("Root exited.");
                     break;
                 }
 

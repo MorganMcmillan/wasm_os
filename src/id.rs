@@ -1,9 +1,9 @@
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct Id(u16, u16);
 
 impl Id {
-    pub fn new(foo: u16) -> Self {
-        Self(foo, 0)
+    pub fn new(number: u16) -> Self {
+        Self(number, 0)
     }
 
     pub fn number(&self) -> u16 {
@@ -17,9 +17,18 @@ impl Id {
     pub fn increment_version(&mut self) {
         self.1 += 1
     }
+
+    pub fn as_i32(&self) -> i32 {
+        self.number() as i32 | (self.version() as i32) << 16
+    }
+
+    pub fn from_i32(number: i32) -> Self {
+        Self(number as u16, (number >> 16) as u16)
+    }
 }
 
 /// An IdStore is used to associate data with versioned Ids.
+/// Ids always start at 1, so that 0 can represent an invalid id.
 pub struct IdStore<T> {
     /// Dense Mapping of ids back to the array of live ids
     dense_array: Vec<(usize, Option<T>)>,
@@ -50,15 +59,15 @@ impl<T> IdStore<T> {
             // Recycle id
             let id = &mut self.ids[self.live_count];
             id.increment_version();
-            self.dense_array[id.number() as usize] = (self.live_count, Some(data));
+            self.dense_array[id.number() as usize - 1] = (self.live_count, Some(data));
             self.live_count += 1;
             *id
         }
     }
 
     fn make_new_id(&mut self, data: T) -> Id {
-        let id = Id::new(self.next_id);
         self.next_id += 1;
+        let id = Id::new(self.next_id);
         self.ids.push(id);
         self.dense_array.push((self.ids.len() - 1, Some(data)));
         self.live_count += 1;
@@ -73,12 +82,12 @@ impl<T> IdStore<T> {
 
     pub fn data_mut(&mut self, id: Id) -> Option<&mut T> {
         self.dense_array
-            .get_mut(id.number() as usize)
+            .get_mut(id.number() as usize - 1)
             .and_then(|i| i.1.as_mut())
     }
 
     fn get_dense_index(&self, id: Id) -> Option<usize> {
-        self.dense_array.get(id.number() as usize).map(|i| i.0)
+        self.dense_array.get(id.number() as usize - 1).map(|i| i.0)
     }
 
     /// Tests for if the id is still valid.
@@ -88,7 +97,7 @@ impl<T> IdStore<T> {
             return false;
         };
 
-        if index < self.live_count {
+        if self.live_count < index {
             return false;
         }
 
@@ -96,7 +105,7 @@ impl<T> IdStore<T> {
     }
 
     fn delete_data(&mut self, id: Id) {
-        if let Some(pair) = self.dense_array.get_mut(id.number() as usize) {
+        if let Some(pair) = self.dense_array.get_mut(id.number() as usize - 1) {
             pair.1 = None;
         }
     }

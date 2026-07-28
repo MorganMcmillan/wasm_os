@@ -45,11 +45,11 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
     )?;
 
     linker.func_wrap("env", "get_pid", |ctx: ProcessContext| -> i32 {
-        ctx.data().pid as i32
+        ctx.data().pid.as_i32()
     })?;
 
     linker.func_wrap("env", "get_parent_pid", |ctx: ProcessContext| -> i32 {
-        ctx.data().parent_pid as i32
+        ctx.data().parent_pid.as_i32()
     })?;
 
     // Return Pid
@@ -68,7 +68,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                     };
 
                     match KERNEL.run_process(path, pid).await {
-                        Ok(id) => id as i32,
+                        Ok(id) => id.as_i32(),
                         Err(_) => 0,
                     }
                 }
@@ -118,7 +118,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Err(e) => return e,
             };
 
-            unsafe { KERNEL.send_event(name, data, caller.data().pid, to_pid as Pid) }
+            unsafe { KERNEL.send_event(name, data, caller.data().pid, Pid::from_i32(to_pid)) }
         },
     )?;
 
@@ -129,7 +129,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             unsafe {
                 let event = KERNEL.get_current_event();
                 let pid = ctx.data().pid;
-                KERNEL.resend_event(event, pid, to_pid as Pid)
+                KERNEL.resend_event(event, pid, Pid::from_i32(to_pid))
             }
         },
     )?;
@@ -154,7 +154,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
 
     linker.func_wrap("env", "get_event_sender", |_: ProcessContext| -> i32 {
         let event = unsafe { KERNEL.get_current_event() };
-        event.sent_by_pid as i32
+        event.sent_by_pid.as_i32()
     })?;
 
     linker.func_wrap(
@@ -199,7 +199,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "env",
         "proc_memcpy",
         |caller: ProcessContext, src_pid: i32, src: i32, dest: i32, len: i32| -> i32 {
-            let src_pid = src_pid as Pid;
+            let src_pid = Pid::from_i32(src_pid);
             let src = src as usize;
             let dest = dest as usize;
             let len = len as usize;
@@ -267,7 +267,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Err(_) => return 0,
             };
 
-            unsafe { KERNEL.get_pid_by_name(name) as i32 }
+            unsafe { KERNEL.get_pid_by_name(name).as_i32() }
         },
     )?;
 

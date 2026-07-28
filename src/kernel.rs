@@ -23,10 +23,12 @@ use wasmtime::Engine;
 use crate::KERNEL;
 use crate::driver::Driver;
 use crate::event::Event;
+use crate::id::Id;
+use crate::id::IdStore;
 use crate::process::Process;
 use crate::wasm_process::WasmProcess;
 
-pub type Pid = u16;
+pub type Pid = Id;
 pub type ProcessLinker = wasmtime::Linker<Process>;
 pub type ProcessContext<'a> = Caller<'a, Process>;
 
@@ -42,7 +44,7 @@ pub struct Kernel {
     engine: Engine,
     pub drivers: Vec<Box<dyn Driver>>,
     // A sparse map of Pids to processes
-    pub processes: Vec<Option<WasmProcess>>,
+    pub processes: IdStore<WasmProcess>,
     // A map of process names to Pids
     process_names: HashMap<Box<str>, Pid>,
     current_event: Option<NonNull<Event>>,
@@ -92,7 +94,7 @@ impl Kernel {
         Self {
             engine,
             drivers,
-            processes: Vec::new(),
+            processes: IdStore::new(),
             process_names: HashMap::new(),
             current_event: None,
             interned_event_names: StringInterner::new(),
@@ -101,7 +103,7 @@ impl Kernel {
     }
 
     pub fn root_exited(&self) -> bool {
-        !matches!(self.processes.first(), Some(Some(_)))
+        !self.processes.id_is_valid(Id::new(1))
     }
 
     pub async fn run_boot(&mut self) {
@@ -120,11 +122,11 @@ impl Kernel {
     }
 
     async fn create_boot_process(&mut self) -> Pid {
-        let root_process = match self.create_process(USER_BOOT_PROCESS, 0).await {
+        let root_process = match self.create_process(USER_BOOT_PROCESS, Pid::default()).await {
             Err(CreateProcessError::FileNotFound) => {
-                match self.create_process(ROM_BOOT_PROCESS, 0).await {
+                match self.create_process(ROM_BOOT_PROCESS, Pid::default()).await {
                     Err(CreateProcessError::FileNotFound) => {
-                        self.create_process(BIOS_BOOT_PROCESS, 0).await
+                        self.create_process(BIOS_BOOT_PROCESS, Pid::default()).await
                     }
                     result => result,
                 }
@@ -210,14 +212,13 @@ impl Kernel {
         let binary = self.read_file(path)?;
 
         // TODO: figure out better way to handle process ids
-        let pid = self.processes.len() as u16 + 1;
         let path = std::path::Path::new(path);
         let label = path
             .file_stem()
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
 
-        let cwd = if parent == 0 {
+        let cwd = if parent.number() == 0 {
             PathBuf::new()
         } else {
             self.get_process(parent)
@@ -228,7 +229,7 @@ impl Kernel {
                 .clone()
         };
 
-        let mut process = Process::new(pid, parent, label, cwd);
+        let mut process = Process::new(parent, label, cwd);
 
         for driver in self.drivers.iter_mut() {
             if let Some(process_state) = driver.create_process_state() {
@@ -236,8 +237,7 @@ impl Kernel {
             }
         }
 
-        // TODO: add ability to set kernel filesystem root
-        let wasm_state = match WasmProcess::new(binary, &self.engine, process).await {
+        let wasm_process = match WasmProcess::new(binary, &self.engine, process).await {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Wasm error: {:?}", e);
@@ -245,10 +245,16 @@ impl Kernel {
             }
         };
 
-        self.processes.push(Some(wasm_state));
+        let pid = self.processes.new_id(wasm_process);
+
+        self.get_process_mut(pid)
+            .unwrap()
+            .store
+            .data_mut()
+            .set_pid(pid);
 
         // If not root process:
-        if parent != 0 {
+        if parent.number() != 0 {
             self.get_process_mut(parent)
                 .expect("Expected a parent process to exist.")
                 .store
@@ -259,18 +265,16 @@ impl Kernel {
         Ok(pid)
     }
 
+    pub fn delete_process(&mut self, pid: Pid) {
+        self.processes.delete_id(pid);
+    }
+
     pub fn get_process(&self, pid: Pid) -> Option<&WasmProcess> {
-        match self.processes.get((pid - 1) as usize) {
-            Some(Some(process)) => Some(process),
-            _ => None,
-        }
+        self.processes.data(pid)
     }
 
     pub fn get_process_mut(&mut self, pid: Pid) -> Option<&mut WasmProcess> {
-        match self.processes.get_mut((pid - 1) as usize) {
-            Some(Some(process)) => Some(process),
-            _ => None,
-        }
+        self.processes.data_mut(pid)
     }
 
     pub fn update(&mut self, rl: &mut RaylibHandle, thread: &raylib::RaylibThread) {
@@ -371,7 +375,7 @@ impl Kernel {
             .unwrap_or("NO_EVENT_NAME")
     }
 
-    pub fn set_process_name(&mut self, pid: u16, name: &str) -> bool {
+    pub fn set_process_name(&mut self, pid: Pid, name: &str) -> bool {
         match self.process_names.entry(name.into()) {
             Entry::Vacant(entry) => {
                 entry.insert(pid);
@@ -382,6 +386,9 @@ impl Kernel {
     }
 
     pub fn get_pid_by_name(&self, name: &str) -> Pid {
-        self.process_names.get(name).copied().unwrap_or(0)
+        self.process_names
+            .get(name)
+            .copied()
+            .unwrap_or_else(Pid::default)
     }
 }

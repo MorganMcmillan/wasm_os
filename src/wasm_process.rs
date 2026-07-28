@@ -133,6 +133,7 @@ impl WasmProcess {
     }
 
     pub async fn run(&mut self) -> i32 {
+        let pid = self.store.data().pid;
         let mut self_cell = PtrCell::new(self as *mut Self);
 
         let run = self
@@ -147,17 +148,27 @@ impl WasmProcess {
             let poll_result =
                 Future::poll(main_loop.as_mut(), &mut Context::from_waker(Waker::noop()));
             match poll_result {
-                Ready(result) => match result {
-                    Ok(code) => {
-                        self_cell.get_mut().store.data_mut().exit_code = Some(code as u16);
-                        return code;
+                Ready(result) => {
+                    let code = match result {
+                        Ok(code) => {
+                            self_cell.get_mut().store.data_mut().exit_code = Some(code as u16);
+                            code
+                        }
+                        Err(e) => {
+                            eprintln!("{e}");
+                            self_cell.get_mut().store.data_mut().exit_code = Some(100);
+                            100
+                        }
+                    };
+
+                    // TODO: move this into a system call like Linux's `wait`, so the process hangs
+                    // out in memory waiting for its data to be collected.
+                    unsafe {
+                        KERNEL.delete_process(pid);
                     }
-                    Err(e) => {
-                        eprintln!("{e}");
-                        self_cell.get_mut().store.data_mut().exit_code = Some(100);
-                        return 100;
-                    }
-                },
+
+                    return code;
+                }
                 Pending => {
                     yield_now().await;
                 }

@@ -12,6 +12,7 @@ use crate::event::Event;
 use crate::kernel::Pid;
 
 /// A process represents the state of a running Webassembly process.
+///
 #[derive(Default)]
 pub struct Process {
     pub pid: Pid,
@@ -30,18 +31,20 @@ pub struct Process {
 #[allow(dead_code)]
 impl Process {
     pub fn new(
-        pid: Pid,
         parent_pid: Pid,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
     ) -> Self {
         Self {
-            pid,
             parent_pid,
             label: label.into(),
             current_working_directory,
             ..Default::default()
         }
+    }
+
+    pub fn set_pid(&mut self, pid: Pid) {
+        self.pid = pid;
     }
 
     pub fn add_child(&mut self, pid: Pid) {
