@@ -34,6 +34,8 @@ pub type Pid = Id;
 pub type ProcessLinker = wasmtime::Linker<Process>;
 pub type ProcessContext<'a> = Caller<'a, Process>;
 
+pub const ROOT_PID: Pid = Id::new(1);
+
 #[derive(Debug)]
 pub enum CreateProcessError {
     FileNotFound,
@@ -105,7 +107,7 @@ impl Kernel {
     }
 
     pub fn root_exited(&self) -> bool {
-        !self.processes.id_is_valid(Id::new(1))
+        !self.processes.id_is_valid(ROOT_PID)
     }
 
     pub async fn run_boot(&mut self) {
@@ -187,17 +189,17 @@ impl Kernel {
 
     // Files
 
-    pub fn directory_exists(&self, path: impl AsRef<Path>) -> bool {
+    pub fn is_directory(&self, path: impl AsRef<Path>) -> bool {
         self.ambient_dir.is_dir(path)
     }
 
     #[allow(unused)]
-    pub fn file_exists(&self, path: impl AsRef<Path>) -> bool {
+    pub fn is_file(&self, path: impl AsRef<Path>) -> bool {
         self.ambient_dir.is_file(path)
     }
 
     #[allow(unused)]
-    pub fn fs_object_exists(&self, path: impl AsRef<Path>) -> bool {
+    pub fn file_exists(&self, path: impl AsRef<Path>) -> bool {
         self.ambient_dir.exists(path)
     }
 
@@ -253,22 +255,21 @@ impl Kernel {
         Ok(bytes)
     }
 
-    pub fn move_file(&self, from: &Path, to: &Path) -> io::Result<()> {
-        // WARNING: using the root directory as to_dir may not work
+    pub fn move_file(&self, from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
         self.ambient_dir.rename(from, &self.ambient_dir, to)
     }
 
-    pub fn copy_file(&self, from: &Path, to: &Path) -> io::Result<u64> {
+    pub fn copy_file(&self, from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<u64> {
         self.ambient_dir.copy(from, &self.ambient_dir, to)
     }
 
-    pub fn delete_file(&self, path: &Path) -> io::Result<()> {
+    pub fn delete_file(&self, path: impl AsRef<Path>) -> io::Result<()> {
         self.ambient_dir
-            .remove_file(path)
-            .or_else(|_| self.ambient_dir.remove_dir_all(path))
+            .remove_file(&path)
+            .or_else(|_| self.ambient_dir.remove_dir_all(&path))
     }
 
-    pub fn create_directory(&self, path: &Path) -> io::Result<()> {
+    pub fn create_directory(&self, path: impl AsRef<Path>) -> io::Result<()> {
         self.ambient_dir.create_dir(path)
     }
 
@@ -421,7 +422,7 @@ impl Kernel {
     /// Sends an event to the root process.
     /// Meant to be used by input drivers.
     pub fn send_event_to_root(&mut self, event_name: &str, event_data: &[u8]) -> i32 {
-        self.send_event(event_name, event_data, Id::default(), Id::new(1))
+        self.send_event(event_name, event_data, Id::default(), ROOT_PID)
     }
 
     pub fn resend_event(&mut self, event: &Event, sender: Pid, receiver: Pid) -> i32 {
@@ -471,5 +472,40 @@ impl Kernel {
             .get(name)
             .copied()
             .unwrap_or_else(Pid::default)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    #[test]
+    fn move_file_works() -> io::Result<()> {
+        let root_dir = "test_dir";
+        let kernel = Kernel::new(root_dir.as_ref(), vec![]);
+
+        let _ = kernel.create_directory("foo");
+        kernel.move_file("foo", "bar").unwrap();
+        assert!(kernel.is_directory("bar"));
+        assert!(!kernel.is_directory("foo"));
+        kernel.delete_file("bar").unwrap();
+
+        Ok(())
+    }
+
+    #[test]
+    fn copy_file_works() -> io::Result<()> {
+        let root_dir = "test_dir";
+        let kernel = Kernel::new(root_dir.as_ref(), vec![]);
+
+        let _ = kernel.create_directory("foo");
+        kernel.copy_file("foo", "bar").unwrap();
+        assert!(kernel.is_directory("bar"));
+        assert!(kernel.is_directory("foo"));
+        kernel.delete_file("foo").unwrap();
+        kernel.delete_file("bar").unwrap();
+
+        Ok(())
     }
 }

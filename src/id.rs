@@ -2,7 +2,7 @@
 pub struct Id(u16, u16);
 
 impl Id {
-    pub fn new(number: u16) -> Self {
+    pub const fn new(number: u16) -> Self {
         Self(number, 0)
     }
 

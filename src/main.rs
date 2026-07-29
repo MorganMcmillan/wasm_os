@@ -11,6 +11,7 @@ use crate::option_cell::OptionCell;
 
 // TODO: move into lib.rs
 mod async_file;
+mod byte_builder;
 mod driver;
 mod event;
 mod id;
@@ -74,6 +75,8 @@ async fn main() -> wasmtime::Result<()> {
         .title("WasmOS Test")
         .resizable()
         .build();
+
+    rl.hide_cursor();
 
     // rl.set_target_fps(FRAMERATE);
 

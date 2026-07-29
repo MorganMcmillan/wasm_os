@@ -127,7 +127,7 @@ impl Process {
                 return -2;
             };
 
-            if KERNEL.directory_exists(&path) {
+            if KERNEL.is_directory(&path) {
                 self.current_working_directory = path;
                 0
             } else {
@@ -143,8 +143,8 @@ impl Process {
         unsafe {
             if KERNEL
                 .move_file(
-                    &self.get_absolute_path(from.as_ref()),
-                    &self.get_absolute_path(to.as_ref()),
+                    self.get_absolute_path(from.as_ref()),
+                    self.get_absolute_path(to.as_ref()),
                 )
                 .is_ok()
             {
@@ -159,8 +159,8 @@ impl Process {
         unsafe {
             if KERNEL
                 .copy_file(
-                    &self.get_absolute_path(from.as_ref()),
-                    &self.get_absolute_path(to.as_ref()),
+                    self.get_absolute_path(from.as_ref()),
+                    self.get_absolute_path(to.as_ref()),
                 )
                 .is_ok()
             {
@@ -174,7 +174,7 @@ impl Process {
     pub fn delete_file(&mut self, path: impl AsRef<Path>) -> i32 {
         unsafe {
             if KERNEL
-                .delete_file(&self.get_absolute_path(path.as_ref()))
+                .delete_file(self.get_absolute_path(path.as_ref()))
                 .is_ok()
             {
                 0
@@ -187,7 +187,7 @@ impl Process {
     pub fn create_directory(&mut self, path: impl AsRef<Path>) -> i32 {
         unsafe {
             if KERNEL
-                .create_directory(&self.get_absolute_path(path.as_ref()))
+                .create_directory(self.get_absolute_path(path.as_ref()))
                 .is_ok()
             {
                 0
