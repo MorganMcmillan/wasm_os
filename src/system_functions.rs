@@ -162,7 +162,6 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
 
             let event = KERNEL.get_current_event();
             let mut data = event.data();
-
             if data.len() < buf_len {
                 data = &data[..buf_len]
             }

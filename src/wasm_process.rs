@@ -126,11 +126,7 @@ impl WasmProcess {
 
     /// Sets a slice of memory. The length of the slice is given by the lenght of the value
     pub fn set_memory(&mut self, address: usize, value: &[u8]) {
-        let memory = get_memory_slice_mut(&self.instance, &mut self.store);
-        let memory = &mut memory[address..];
-        if memory.len() < value.len() {
-            panic!("Attempted to set memory region to value larger than region allows");
-        }
+        let memory = self.get_memory_mut(address, value.len());
 
         for (i, &byte) in value.iter().enumerate() {
             memory[i] = byte;
