@@ -1,10 +1,4 @@
-use std::{
-    any::Any,
-    num::NonZeroU32,
-    sync::{Arc, Mutex},
-};
-
-use rodio::{MixerDeviceSink, Player, nz};
+mod sample_queue;
 
 use crate::{
     driver::Driver,
@@ -12,109 +6,9 @@ use crate::{
     mut_cell::MutCell,
     system_functions,
 };
-
-pub const SAMPLE_RATE: u32 = 44100;
-const MAX_SAMPLES: usize = 32768;
-
-pub struct SampleQueue {
-    buffer: [u8; MAX_SAMPLES],
-    tail: Mutex<u16>,
-    length: Mutex<u16>,
-    process_exited: bool,
-    // A sample that was possibly skipped while being added to the queue
-    skipped_right: Option<u8>,
-}
-
-impl SampleQueue {
-    fn new() -> Self {
-        Self {
-            buffer: [0; MAX_SAMPLES],
-            tail: Mutex::new(0),
-            length: Mutex::new(0),
-            process_exited: false,
-            skipped_right: None,
-        }
-    }
-
-    fn push(&mut self, sample: u8) -> bool {
-        let mut length = self.length.lock().unwrap();
-        if *length == MAX_SAMPLES as u16 {
-            return false;
-        }
-
-        let head = (*self.tail.lock().unwrap() + *length) % MAX_SAMPLES as u16;
-        self.buffer[head as usize] = sample;
-        *length += 1;
-
-        true
-    }
-
-    fn push_sample(&mut self, left: u8, right: u8) -> bool {
-        if let Some(skipped_right) = self.skipped_right {
-            if self.push(skipped_right) {
-                self.skipped_right = None;
-            } else {
-                return false;
-            }
-        }
-
-        if !self.push(left) {
-            self.skipped_right = Some(right);
-            return true;
-        }
-
-        if !self.push(right) {
-            return false;
-        }
-
-        true
-    }
-}
-
-unsafe impl Send for SampleQueue {}
-unsafe impl Sync for SampleQueue {}
-
-impl Iterator for SampleQueue {
-    type Item = rodio::Sample;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.process_exited {
-            return None;
-        }
-
-        let mut length = self.length.lock().unwrap();
-        if *length == 0 {
-            return Some(0.0);
-        }
-
-        let mut tail = self.tail.lock().unwrap();
-
-        let sample = self.buffer[*tail as usize];
-
-        *tail = (*tail + 1) % MAX_SAMPLES as u16;
-        *length -= 1;
-
-        Some(sample as rodio::Sample / 255.0)
-    }
-}
-
-impl rodio::Source for SampleQueue {
-    fn current_span_len(&self) -> Option<usize> {
-        None
-    }
-
-    fn channels(&self) -> rodio::ChannelCount {
-        nz!(2)
-    }
-
-    fn sample_rate(&self) -> rodio::SampleRate {
-        NonZeroU32::new(SAMPLE_RATE).unwrap()
-    }
-
-    fn total_duration(&self) -> Option<std::time::Duration> {
-        None
-    }
-}
+use rodio::{MixerDeviceSink, Player};
+use sample_queue::SampleQueue;
+use std::any::Any;
 
 pub struct AudioState {
     handle: MixerDeviceSink,
@@ -182,15 +76,16 @@ impl Driver for AudioState {
     }
 }
 
+#[allow(unused)]
 pub struct ProcessAudioState {
     player: Player,
-    sample_buffer: SampleQueue,
+    sample_buffer: MutCell<SampleQueue>,
 }
 
 impl ProcessAudioState {
     pub fn new(player: Player) -> Self {
-        let sample_buffer = SampleQueue::new();
-        player.append(&sample_buffer);
+        let sample_buffer = MutCell::new(SampleQueue::new());
+        player.append(sample_buffer.borrow_static());
         Self {
             player,
             sample_buffer,
@@ -200,10 +95,20 @@ impl ProcessAudioState {
     pub fn play(&mut self, samples: &[u8], left_volume: u8, right_volue: u8) -> usize {
         for (i, &sample) in samples.iter().enumerate() {
             let (left, right) = split_sample(sample, left_volume, right_volue);
-            if !self.sample_buffer.push_sample(left, right) {
+            if !self.sample_buffer.borrow_static().push_sample(left, right) {
                 return i;
             }
         }
         samples.len()
     }
+}
+
+fn split_sample(sample: u8, left_volume: u8, right_volue: u8) -> (u8, u8) {
+    fn scale_sample(sample: u8, volume: u8) -> u8 {
+        ((sample as u32 * volume as u32) / 255) as u8
+    }
+    (
+        scale_sample(sample, left_volume),
+        scale_sample(sample, right_volue),
+    )
 }
