@@ -161,13 +161,14 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             let buf_len = buf_len as usize;
 
             let event = KERNEL.get_current_event();
-            let data = event.data();
-            let process = KERNEL.get_process_mut(caller.data().pid).unwrap();
+            let mut data = event.data();
+
             if data.len() < buf_len {
-                process.set_memory(buf_ptr, data);
-            } else {
-                process.set_memory(buf_ptr, &data[..buf_len]);
+                data = &data[..buf_len]
             }
+            let process = KERNEL.get_process_mut(caller.data().pid).unwrap();
+
+            process.set_memory(buf_ptr, data);
         },
     )?;
 

@@ -418,6 +418,12 @@ impl Kernel {
         }
     }
 
+    /// Sends an event to the root process.
+    /// Meant to be used by input drivers.
+    pub fn send_event_to_root(&mut self, event_name: &str, event_data: &[u8]) -> i32 {
+        self.send_event(event_name, event_data, Id::default(), Id::new(1))
+    }
+
     pub fn resend_event(&mut self, event: &Event, sender: Pid, receiver: Pid) -> i32 {
         if let Some(receiver_process) = self.get_process_mut(receiver) {
             let event = Event::from_resent(event, sender);
