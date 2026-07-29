@@ -67,7 +67,6 @@ const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
 const USER_BOOT_PROCESS: &str = "boot.wasm";
 
 fn create_system_folders(root_dir: &cap_std::fs::Dir) {
-    // TODO: somehow create a default boot.wasm
     let _ = root_dir.create_dir("bios");
     let _ = root_dir.create_dir("rom");
     let _ = root_dir.create_dir("lib");

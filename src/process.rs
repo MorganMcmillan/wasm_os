@@ -7,6 +7,7 @@ use std::time::UNIX_EPOCH;
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
+use wasmtime::ModuleExport;
 
 use crate::KERNEL;
 use crate::async_file::AsyncFile;
@@ -24,6 +25,8 @@ pub struct Process {
     pub label: Box<str>,
     /// The directory for which files are opened relative to
     pub current_working_directory: PathBuf,
+    /// The exported index of the process's memory
+    pub memory_export: Option<ModuleExport>,
     /// The table of open files.
     /// The following files always have these ids:
     /// Stdin: (1, 0),
@@ -59,6 +62,7 @@ impl Process {
             parent_pid,
             label: label.into(),
             current_working_directory,
+            memory_export: None,
             open_files,
             join_handle: None,
             exit_code: None,

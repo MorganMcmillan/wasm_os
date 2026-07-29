@@ -8,37 +8,53 @@ use std::task::{Context, Waker};
 
 use crate::KERNEL;
 use crate::event::Event;
-use crate::kernel::ProcessLinker;
+use crate::kernel::{Pid, ProcessLinker};
 use crate::process::Process;
 use crate::ptr_cell::PtrCell;
 use crate::system_functions::load_system_functions;
 use tokio::task::yield_now;
-use wasmtime::{Engine, Instance, Module, Store};
+use wasmtime::{Engine, Instance, Memory, Module, ModuleExport, Store};
 
 pub type ProcessStore = Store<Process>;
+
+#[allow(invalid_reference_casting, clippy::transmute_ptr_to_ref)]
+fn get_wasm_memory(
+    instance: &Instance,
+    store_ptr: *mut ProcessStore,
+    mem_index: &ModuleExport,
+) -> Memory {
+    unsafe {
+        instance
+            .get_module_export(
+                transmute::<*mut ProcessStore, &mut ProcessStore>(store_ptr),
+                mem_index,
+            )
+            .unwrap()
+            .into_memory()
+            .unwrap()
+    }
+}
 
 /// Returns a view of a WASM memory.
 /// Note: this function exists entirely because I was having borrow errors.
 #[allow(invalid_reference_casting, clippy::transmute_ptr_to_ref)]
-fn get_memory_slice<'a>(instance: &'a Instance, store: &'a ProcessStore) -> &'a [u8] {
+fn get_memory_slice<'a>(
+    instance: &'a Instance,
+    store: &'a ProcessStore,
+    mem_index: &ModuleExport,
+) -> &'a [u8] {
     let store_ptr = store as *const ProcessStore as *mut ProcessStore;
-    unsafe {
-        // TODO: replace string lookup with addding the index of "memory" to the process
-        let memory = instance
-            .get_memory(
-                transmute::<*mut ProcessStore, &mut ProcessStore>(store_ptr),
-                "memory",
-            )
-            .unwrap();
-        memory.data(store)
-    }
+    get_wasm_memory(instance, store_ptr, mem_index).data(store)
 }
 
 /// Returns a mutable view of a WASM memory.
 /// Note: this function exists entirely because I was having borrow errors.
-fn get_memory_slice_mut<'a>(instance: &'a Instance, store: &'a mut ProcessStore) -> &'a mut [u8] {
-    let memory = instance.get_memory(&mut *store, "memory").unwrap();
-    memory.data_mut(store)
+fn get_memory_slice_mut<'a>(
+    instance: &'a Instance,
+    store: &'a mut ProcessStore,
+    mem_index: &ModuleExport,
+) -> &'a mut [u8] {
+    get_wasm_memory(instance, store, mem_index).data_mut(store)
 }
 /// Represents the actual running process, including its memory and functions
 pub struct WasmProcess {
@@ -79,9 +95,15 @@ fn load_libraries(
 }
 
 impl WasmProcess {
-    pub async fn new(binary: Vec<u8>, engine: &Engine, process: Process) -> wasmtime::Result<Self> {
+    pub async fn new(
+        binary: Vec<u8>,
+        engine: &Engine,
+        mut process: Process,
+    ) -> wasmtime::Result<Self> {
         // Modules are compiled from text or binary
         let module = Module::new(engine, binary)?;
+        process.memory_export = module.get_export_index("memory");
+
         let mut linker = wasmtime::Linker::new(engine);
 
         let (imported_drivers, imported_libraries) = get_imported_modules(&module);
@@ -101,7 +123,6 @@ impl WasmProcess {
         load_libraries(&mut linker, &mut store, engine, &imported_libraries)?;
 
         // Configure preemptive interuption
-        // TODO: figure out how this actually works
         store.epoch_deadline_async_yield_and_update(1);
         store.set_epoch_deadline(1);
 
@@ -112,12 +133,14 @@ impl WasmProcess {
 
     /// Gets a slice of memory
     pub fn get_memory(&self, address: usize, len: usize) -> &[u8] {
-        let memory = get_memory_slice(&self.instance, &self.store);
+        let mem_index = self.store.data().memory_export.unwrap();
+        let memory = get_memory_slice(&self.instance, &self.store, &mem_index);
         &memory[address..(address + len)]
     }
 
     pub fn get_memory_mut(&mut self, address: usize, len: usize) -> &mut [u8] {
-        let memory = get_memory_slice_mut(&self.instance, &mut self.store);
+        let mem_index = self.store.data().memory_export.unwrap();
+        let memory = get_memory_slice_mut(&self.instance, &mut self.store, &mem_index);
         &mut memory[address..(address + len)]
     }
 
@@ -159,15 +182,23 @@ impl WasmProcess {
                         }
                     };
 
-                    // TODO: move this into a system call like Linux's `wait`, so the process hangs
-                    // out in memory waiting for its data to be collected.
                     unsafe {
+                        // Notify parent that child has exited.
+                        let parent = self_cell.get().store.data().parent_pid;
+                        if parent != Pid::default() {
+                            let pid = self_cell.get().store.data().pid;
+                            KERNEL.send_event("child_exited", &code.to_le_bytes(), pid, parent);
+                        }
+
                         KERNEL.delete_process(pid);
                     }
 
                     return code;
                 }
                 Pending => {
+                    // TODO: check that this works. The process needs to always yield when the epoch
+                    // deadline is reached.
+                    self_cell.get_mut().store.set_epoch_deadline(1);
                     yield_now().await;
                 }
             }

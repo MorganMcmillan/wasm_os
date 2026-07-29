@@ -105,9 +105,6 @@ impl Driver for ScreenState {
             },
         )?;
 
-        // TODO: add drawing functions like square and circle
-        // Actually, this should be part of its own driver
-
         Ok(())
     }
 

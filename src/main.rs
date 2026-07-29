@@ -9,7 +9,6 @@ use crate::driver::screen::ScreenState;
 use crate::kernel::Kernel;
 use crate::option_cell::OptionCell;
 
-// TODO: move into lib.rs
 mod async_file;
 mod byte_builder;
 mod driver;
