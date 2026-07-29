@@ -134,9 +134,9 @@ impl Kernel {
                 .create_process(
                     path,
                     Pid::default(),
-                    AsyncFile::read_only(stdin()),
-                    AsyncFile::write_only(stdout()),
-                    AsyncFile::write_only(stderr()),
+                    AsyncFile::stdin(),
+                    AsyncFile::stdout(),
+                    AsyncFile::stderr(),
                 )
                 .await
         }
