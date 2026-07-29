@@ -8,18 +8,18 @@ use tokio::task::JoinHandle;
 use string_interner::symbol::SymbolU32;
 
 use crate::KERNEL;
+use crate::async_file::AsyncFile;
 use crate::event::Event;
+use crate::id::{Id, IdStore};
 use crate::kernel::Pid;
 
 /// A process represents the state of a running Webassembly process.
-///
-#[derive(Default)]
 pub struct Process {
     pub pid: Pid,
     pub parent_pid: Pid,
     pub label: Box<str>,
     pub current_working_directory: PathBuf,
-    // pub file_handles: FileHandles,
+    pub open_files: IdStore<AsyncFile>,
     pub join_handle: Option<JoinHandle<i32>>,
     pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
@@ -34,12 +34,27 @@ impl Process {
         parent_pid: Pid,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
+        stdin: AsyncFile,
+        stdout: AsyncFile,
+        stderr: AsyncFile,
     ) -> Self {
+        let mut open_files = IdStore::new();
+        open_files.new_id(stdin);
+        open_files.new_id(stdout);
+        open_files.new_id(stderr);
+
         Self {
+            pid: Id::new(0),
             parent_pid,
             label: label.into(),
             current_working_directory,
-            ..Default::default()
+            open_files,
+            join_handle: None,
+            exit_code: None,
+            children: Vec::new(),
+            event_queue: Vec::new(),
+            event_handlers: HashMap::new(),
+            driver_states: HashMap::new(),
         }
     }
 

@@ -15,12 +15,16 @@ use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU32;
+use tokio::io::stderr;
+use tokio::io::stdin;
+use tokio::io::stdout;
 use tokio::task;
 use wasmtime::Caller;
 use wasmtime::Config;
 use wasmtime::Engine;
 
 use crate::KERNEL;
+use crate::async_file::AsyncFile;
 use crate::driver::Driver;
 use crate::event::Event;
 use crate::id::Id;
@@ -122,11 +126,26 @@ impl Kernel {
     }
 
     async fn create_boot_process(&mut self) -> Pid {
-        let root_process = match self.create_process(USER_BOOT_PROCESS, Pid::default()).await {
+        async fn create_boot_process(
+            kernel: &mut Kernel,
+            path: &str,
+        ) -> Result<Pid, CreateProcessError> {
+            kernel
+                .create_process(
+                    path,
+                    Pid::default(),
+                    AsyncFile::read_only(stdin()),
+                    AsyncFile::write_only(stdout()),
+                    AsyncFile::write_only(stderr()),
+                )
+                .await
+        }
+
+        let root_process = match create_boot_process(self, USER_BOOT_PROCESS).await {
             Err(CreateProcessError::FileNotFound) => {
-                match self.create_process(ROM_BOOT_PROCESS, Pid::default()).await {
+                match create_boot_process(self, ROM_BOOT_PROCESS).await {
                     Err(CreateProcessError::FileNotFound) => {
-                        self.create_process(BIOS_BOOT_PROCESS, Pid::default()).await
+                        create_boot_process(self, BIOS_BOOT_PROCESS).await
                     }
                     result => result,
                 }
@@ -147,8 +166,13 @@ impl Kernel {
         &mut self,
         path: &str,
         parent: Pid,
+        stdin: AsyncFile,
+        stdout: AsyncFile,
+        stderr: AsyncFile,
     ) -> Result<Pid, CreateProcessError> {
-        let pid = self.create_process(path, parent).await?;
+        let pid = self
+            .create_process(path, parent, stdin, stdout, stderr)
+            .await?;
         let process = unsafe { KERNEL.get_process_mut(pid).unwrap() };
         let join_handle = task::spawn(process.run());
 
@@ -204,6 +228,9 @@ impl Kernel {
         &mut self,
         path: &str,
         parent: Pid,
+        stdin: AsyncFile,
+        stdout: AsyncFile,
+        stderr: AsyncFile,
     ) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
@@ -229,7 +256,7 @@ impl Kernel {
                 .clone()
         };
 
-        let mut process = Process::new(parent, label, cwd);
+        let mut process = Process::new(parent, label, cwd, stdin, stdout, stderr);
 
         for driver in self.drivers.iter_mut() {
             if let Some(process_state) = driver.create_process_state() {

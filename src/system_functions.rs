@@ -6,6 +6,7 @@ use tokio::time::sleep;
 use wasmtime::Linker;
 
 use crate::KERNEL;
+use crate::async_file::AsyncFile;
 use crate::kernel::{Pid, ProcessContext};
 use crate::process::Process;
 
@@ -67,7 +68,10 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                         Err(_) => return 0,
                     };
 
-                    match KERNEL.run_process(path, pid).await {
+                    match KERNEL
+                        .run_process(path, pid, AsyncFile::Null, AsyncFile::Null, AsyncFile::Null)
+                        .await
+                    {
                         Ok(id) => id.as_i32(),
                         Err(_) => 0,
                     }

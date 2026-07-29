@@ -10,6 +10,7 @@ use crate::kernel::Kernel;
 use crate::option_cell::OptionCell;
 
 // TODO: move into lib.rs
+mod async_file;
 mod driver;
 mod event;
 mod id;
