@@ -268,6 +268,10 @@ impl Kernel {
             .or_else(|_| self.ambient_dir.remove_dir_all(path))
     }
 
+    pub fn create_directory(&self, path: &Path) -> io::Result<()> {
+        self.ambient_dir.create_dir(path)
+    }
+
     pub async fn create_process(
         &mut self,
         path: &str,

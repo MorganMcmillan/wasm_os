@@ -184,6 +184,19 @@ impl Process {
         }
     }
 
+    pub fn create_directory(&mut self, path: impl AsRef<Path>) -> i32 {
+        unsafe {
+            if KERNEL
+                .create_directory(&self.get_absolute_path(path.as_ref()))
+                .is_ok()
+            {
+                0
+            } else {
+                -1
+            }
+        }
+    }
+
     pub fn get_file(&mut self, fd: Id) -> Option<&mut AsyncFile> {
         self.open_files.data_mut(fd)
     }

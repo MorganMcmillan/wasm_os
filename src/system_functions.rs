@@ -444,6 +444,19 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         },
     )?;
 
+    linker.func_wrap(
+        "env",
+        "create_directory",
+        |mut ctx: ProcessContext, path_ptr: i32, path_len: i32| -> i32 {
+            let path = match get_str(&ctx, path_ptr, path_len) {
+                Ok(f) => f,
+                Err(e) => return e,
+            };
+
+            ctx.data_mut().create_directory(path)
+        },
+    )?;
+
     // Process
 
     linker.func_wrap_async("env", "yield_now", |_: ProcessContext, _: ()| {
