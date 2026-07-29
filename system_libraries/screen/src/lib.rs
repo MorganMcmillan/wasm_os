@@ -2,7 +2,7 @@ pub const SCREEN_WIDTH: usize = 384;
 pub const SCREEN_HEIGHT: usize = 216;
 pub const SCREEN_SIZE: usize = SCREEN_WIDTH * SCREEN_HEIGHT;
 
-#[link(wasm_import_module = "driver_draw")]
+#[link(wasm_import_module = "driver_screen")]
 unsafe extern "C" {
     #[link_name = "upload_framebuffer"]
     fn extern_upload_framebuffer(framebuffer: *const u8);
