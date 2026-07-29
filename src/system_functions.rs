@@ -397,6 +397,53 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         },
     )?;
 
+    linker.func_wrap(
+        "env",
+        "move_file",
+        |mut ctx: ProcessContext, from_ptr: i32, from_len: i32, to_ptr: i32, to_len: i32| -> i32 {
+            let from = match get_str(&ctx, from_ptr, from_len) {
+                Ok(f) => f,
+                Err(e) => return e,
+            };
+            let to = match get_str(&ctx, to_ptr, to_len) {
+                Ok(t) => t,
+                Err(e) => return e,
+            };
+
+            ctx.data_mut().move_file(from, to)
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "copy_file",
+        |mut ctx: ProcessContext, from_ptr: i32, from_len: i32, to_ptr: i32, to_len: i32| -> i32 {
+            let from = match get_str(&ctx, from_ptr, from_len) {
+                Ok(f) => f,
+                Err(e) => return e,
+            };
+            let to = match get_str(&ctx, to_ptr, to_len) {
+                Ok(t) => t,
+                Err(e) => return e,
+            };
+
+            ctx.data_mut().copy_file(from, to)
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "delete_file",
+        |mut ctx: ProcessContext, path_ptr: i32, path_len: i32| -> i32 {
+            let path = match get_str(&ctx, path_ptr, path_len) {
+                Ok(f) => f,
+                Err(e) => return e,
+            };
+
+            ctx.data_mut().delete_file(path)
+        },
+    )?;
+
     // Process
 
     linker.func_wrap_async("env", "yield_now", |_: ProcessContext, _: ()| {

@@ -15,12 +15,23 @@ use crate::kernel::Pid;
 
 /// A process represents the state of a running Webassembly process.
 pub struct Process {
+    /// This process' id
     pub pid: Pid,
+    /// The parent process' id
     pub parent_pid: Pid,
+    /// The label is this process' file name without the extension
     pub label: Box<str>,
+    /// The directory for which files are opened relative to
     pub current_working_directory: PathBuf,
+    /// The table of open files.
+    /// The following files always have these ids:
+    /// Stdin: (1, 0),
+    /// Stdout: (2, 0),
+    /// Stderr: (3, 0)
     pub open_files: IdStore<AsyncFile>,
+    /// Can be awaited to end the process early
     pub join_handle: Option<JoinHandle<i32>>,
+    /// The return value of the process
     pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
@@ -85,6 +96,30 @@ impl Process {
         unsafe { KERNEL.read_file(&cwd).ok() }
     }
 
+    // Gets the absolute path relative to this process' current working directory.
+    fn get_absolute_path(&self, path: &Path) -> PathBuf {
+        if let Ok(abs_path) = path.strip_prefix("/") {
+            abs_path.to_path_buf()
+        } else {
+            let mut relative_path = self.current_working_directory.clone();
+            relative_path.push(path);
+            relative_path
+        }
+    }
+
+    pub fn open_file(&mut self, path: impl AsRef<Path>, mode: i32) -> Id {
+        let path = self.get_absolute_path(path.as_ref());
+
+        let file = unsafe {
+            match KERNEL.open_async_file(&path, mode as u8) {
+                Ok(f) => f,
+                Err(_) => return Id::default(),
+            }
+        };
+
+        self.open_files.new_id(AsyncFile::File(file))
+    }
+
     fn set_current_directory(&mut self, path: &Path) -> i32 {
         unsafe {
             // TODO: do we even need this? Surely the relative path should resolve to a file.
@@ -100,33 +135,53 @@ impl Process {
             }
         }
     }
-
-    // Gets the absolute path relative to this process' current working directory.
-    fn get_absolute_path(&self, path: &Path) -> PathBuf {
-        if let Ok(abs_path) = path.strip_prefix("/") {
-            abs_path.to_path_buf()
-        } else {
-            let mut relative_path = self.current_working_directory.clone();
-            relative_path.push(path);
-            relative_path
-        }
-    }
-
     pub fn change_directory(&mut self, path: impl AsRef<Path>) -> i32 {
         self.set_current_directory(&self.get_absolute_path(path.as_ref()))
     }
 
-    pub fn open_file(&mut self, path: impl AsRef<Path>, mode: i32) -> Id {
-        let path = self.get_absolute_path(path.as_ref());
-
-        let file = unsafe {
-            match KERNEL.open_async_file(&path, mode as u8) {
-                Ok(f) => f,
-                Err(_) => return Id::default(),
+    pub fn move_file(&mut self, from: impl AsRef<Path>, to: impl AsRef<Path>) -> i32 {
+        unsafe {
+            if KERNEL
+                .move_file(
+                    &self.get_absolute_path(from.as_ref()),
+                    &self.get_absolute_path(to.as_ref()),
+                )
+                .is_ok()
+            {
+                0
+            } else {
+                -1
             }
-        };
+        }
+    }
 
-        self.open_files.new_id(AsyncFile::File(file))
+    pub fn copy_file(&mut self, from: impl AsRef<Path>, to: impl AsRef<Path>) -> i32 {
+        unsafe {
+            if KERNEL
+                .copy_file(
+                    &self.get_absolute_path(from.as_ref()),
+                    &self.get_absolute_path(to.as_ref()),
+                )
+                .is_ok()
+            {
+                0
+            } else {
+                -1
+            }
+        }
+    }
+
+    pub fn delete_file(&mut self, path: impl AsRef<Path>) -> i32 {
+        unsafe {
+            if KERNEL
+                .delete_file(&self.get_absolute_path(path.as_ref()))
+                .is_ok()
+            {
+                0
+            } else {
+                -1
+            }
+        }
     }
 
     pub fn get_file(&mut self, fd: Id) -> Option<&mut AsyncFile> {

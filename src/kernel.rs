@@ -253,6 +253,21 @@ impl Kernel {
         Ok(bytes)
     }
 
+    pub fn move_file(&self, from: &Path, to: &Path) -> io::Result<()> {
+        // WARNING: using the root directory as to_dir may not work
+        self.ambient_dir.rename(from, &self.ambient_dir, to)
+    }
+
+    pub fn copy_file(&self, from: &Path, to: &Path) -> io::Result<u64> {
+        self.ambient_dir.copy(from, &self.ambient_dir, to)
+    }
+
+    pub fn delete_file(&self, path: &Path) -> io::Result<()> {
+        self.ambient_dir
+            .remove_file(path)
+            .or_else(|_| self.ambient_dir.remove_dir_all(path))
+    }
+
     pub async fn create_process(
         &mut self,
         path: &str,
