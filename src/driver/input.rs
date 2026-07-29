@@ -1,9 +1,4 @@
-use std::mem::transmute;
-
-use raylib::{
-    RaylibHandle,
-    ffi::{KeyboardKey, MouseButton},
-};
+use raylib::{RaylibHandle, ffi::MouseButton};
 
 use crate::{
     KERNEL,
@@ -69,18 +64,18 @@ impl Driver for InputState {
         // Send keyboard events
 
         // Iterate all raylib keys
-        for i in 0..=336 {
-            unsafe {
-                let key = transmute::<i32, KeyboardKey>(i);
-
-                if rl.is_key_pressed(key) {
-                    KERNEL.send_event_to_root("key_pressed", &(i as u16).to_le_bytes());
-                }
-                if rl.is_key_released(key) {
-                    KERNEL.send_event_to_root("key_pressed", &(i as u16).to_le_bytes());
-                }
-            }
-        }
+        // for i in 0..=336 {
+        //     unsafe {
+        //         let key = transmute::<i32, KeyboardKey>(i);
+        //
+        //         if rl.is_key_pressed(key) {
+        //             KERNEL.send_event_to_root("key_pressed", &(i as u16).to_le_bytes());
+        //         }
+        //         if rl.is_key_released(key) {
+        //             KERNEL.send_event_to_root("key_pressed", &(i as u16).to_le_bytes());
+        //         }
+        //     }
+        // }
 
         while let Some(c) = rl.get_char_pressed() {
             if c.is_ascii() {

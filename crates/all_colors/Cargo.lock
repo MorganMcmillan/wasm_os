@@ -18,14 +18,10 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 name = "colors"
 version = "0.1.0"
 dependencies = [
- "draw",
+ "screen",
  "wasm_os",
  "wit-bindgen",
 ]
-
-[[package]]
-name = "draw"
-version = "0.1.0"
 
 [[package]]
 name = "equivalent"
@@ -134,6 +130,10 @@ checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "screen"
+version = "0.1.0"
 
 [[package]]
 name = "semver"

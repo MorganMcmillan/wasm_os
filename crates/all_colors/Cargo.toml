@@ -8,5 +8,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm_os = { path = "../../system_libraries/wasm_os" }
-draw = { path = "../../system_libraries/draw" }
+screen = { path = "../../system_libraries/screen" }
 wit-bindgen = "0.60.0"

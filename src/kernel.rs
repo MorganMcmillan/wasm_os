@@ -79,12 +79,18 @@ impl Kernel {
         config.epoch_interruption(true);
 
         let engine = Engine::new(&config).unwrap();
-        let engine_clone = engine.clone();
+        let engine_clone = engine.weak();
 
         // Periodically interupt process execution
         std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(50));
-            engine_clone.increment_epoch();
+            loop {
+                std::thread::sleep(Duration::from_millis(50));
+                if let Some(engine) = engine_clone.upgrade() {
+                    engine.increment_epoch();
+                } else {
+                    break;
+                }
+            }
         });
 
         let ambient_dir =
