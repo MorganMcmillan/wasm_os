@@ -4,7 +4,8 @@ use rodio::{MixerDeviceSink, Player, nz};
 
 use crate::{
     driver::Driver,
-    kernel::{ProcessContext, ProcessLinker},
+    kernel::{Kernel, ProcessContext, ProcessLinker},
+    mut_cell::MutCell,
     system_functions,
 };
 
@@ -76,7 +77,13 @@ impl Driver for AudioState {
         "driver_audio"
     }
 
-    fn update(&mut self, _rl: &mut raylib::RaylibHandle, _thread: &raylib::RaylibThread) {}
+    fn update(
+        &mut self,
+        _kernel: &'static MutCell<Kernel>,
+        _rl: &mut raylib::RaylibHandle,
+        _thread: &raylib::RaylibThread,
+    ) {
+    }
 
     fn create_process_state(&mut self) -> Option<Box<dyn Any + Send>> {
         Some(Box::new(ProcessAudioState::new(Player::connect_new(

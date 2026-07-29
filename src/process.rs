@@ -9,14 +9,15 @@ use tokio::task::JoinHandle;
 use string_interner::symbol::SymbolU32;
 use wasmtime::ModuleExport;
 
-use crate::KERNEL;
 use crate::async_file::AsyncFile;
 use crate::event::Event;
 use crate::id::{Id, IdStore};
-use crate::kernel::Pid;
+use crate::kernel::{Kernel, Pid};
+use crate::mut_cell::MutCell;
 
 /// A process represents the state of a running Webassembly process.
 pub struct Process {
+    pub kernel: &'static MutCell<Kernel>,
     /// This process' id
     pub pid: Pid,
     /// The parent process' id
@@ -45,6 +46,7 @@ pub struct Process {
 
 impl Process {
     pub fn new(
+        kernel: &'static MutCell<Kernel>,
         parent_pid: Pid,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
@@ -58,6 +60,7 @@ impl Process {
         open_files.new_id(stderr);
 
         Self {
+            kernel,
             pid: Id::new(0),
             parent_pid,
             label: label.into(),
@@ -106,78 +109,72 @@ impl Process {
     }
 
     pub fn is_directory(&self, path: impl AsRef<Path>) -> bool {
-        unsafe { KERNEL.is_directory(self.get_absolute_path(path.as_ref())) }
+        self.kernel
+            .is_directory(self.get_absolute_path(path.as_ref()))
     }
 
     pub fn is_file(&self, path: impl AsRef<Path>) -> bool {
-        unsafe { KERNEL.is_file(self.get_absolute_path(path.as_ref())) }
+        self.kernel.is_file(self.get_absolute_path(path.as_ref()))
     }
 
     pub fn file_exists(&self, path: impl AsRef<Path>) -> bool {
-        unsafe { KERNEL.file_exists(self.get_absolute_path(path.as_ref())) }
+        self.kernel
+            .file_exists(self.get_absolute_path(path.as_ref()))
     }
 
     pub fn file_size(&self, path: impl AsRef<Path>) -> i32 {
-        unsafe {
-            match KERNEL.file_size(path) {
-                Ok(size) => size as i32,
-                Err(_) => -1,
-            }
+        match self.kernel.file_size(path) {
+            Ok(size) => size as i32,
+            Err(_) => -1,
         }
     }
 
     pub fn file_created(&self, path: impl AsRef<Path>) -> i64 {
-        unsafe {
-            KERNEL
-                .file_created(path)
-                .map(time_since_unix_epoch)
-                .unwrap_or(-1)
-        }
+        self.kernel
+            .file_created(path)
+            .map(time_since_unix_epoch)
+            .unwrap_or(-1)
     }
 
     pub fn file_accessed(&self, path: impl AsRef<Path>) -> i64 {
-        unsafe {
-            KERNEL
-                .file_accessed(path)
-                .map(time_since_unix_epoch)
-                .unwrap_or(-1)
-        }
+        self.kernel
+            .file_accessed(path)
+            .map(time_since_unix_epoch)
+            .unwrap_or(-1)
     }
 
     pub fn file_modified(&self, path: impl AsRef<Path>) -> i64 {
-        unsafe {
-            KERNEL
-                .file_modified(path)
-                .map(time_since_unix_epoch)
-                .unwrap_or(-1)
-        }
+        self.kernel
+            .file_modified(path)
+            .map(time_since_unix_epoch)
+            .unwrap_or(-1)
     }
 
     pub fn open_file(&mut self, path: impl AsRef<Path>, mode: i32) -> Id {
         let path = self.get_absolute_path(path.as_ref());
 
-        let file = unsafe {
-            match KERNEL.open_async_file(&path, mode as u8) {
-                Ok(f) => f,
-                Err(_) => return Id::default(),
-            }
+        let file = match self
+            .kernel
+            .borrow_static()
+            .open_async_file(&path, mode as u8)
+        {
+            Ok(f) => f,
+            Err(_) => return Id::default(),
         };
 
         self.open_files.new_id(AsyncFile::File(file))
     }
 
     fn set_current_directory(&mut self, path: &Path) -> i32 {
-        unsafe {
-            let Ok(path) = KERNEL.get_absolute_path(path) else {
-                return -2;
-            };
+        let Ok(path) = self.kernel.get_absolute_path(path) else {
+            return -2;
+        };
 
-            if KERNEL.is_directory(&path) {
-                self.current_working_directory = path;
-                0
-            } else {
-                -1
-            }
+        if self.kernel.is_directory(&path) {
+            self.current_working_directory = path;
+            0
+        } else {
+            -1
         }
     }
     pub fn change_directory(&mut self, path: impl AsRef<Path>) -> i32 {
@@ -185,60 +182,56 @@ impl Process {
     }
 
     pub fn move_file(&mut self, from: impl AsRef<Path>, to: impl AsRef<Path>) -> i32 {
-        unsafe {
-            if KERNEL
-                .move_file(
-                    self.get_absolute_path(from.as_ref()),
-                    self.get_absolute_path(to.as_ref()),
-                )
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
+        if self
+            .kernel
+            .move_file(
+                self.get_absolute_path(from.as_ref()),
+                self.get_absolute_path(to.as_ref()),
+            )
+            .is_ok()
+        {
+            0
+        } else {
+            -1
         }
     }
 
     pub fn copy_file(&mut self, from: impl AsRef<Path>, to: impl AsRef<Path>) -> i32 {
-        unsafe {
-            if KERNEL
-                .copy_file(
-                    self.get_absolute_path(from.as_ref()),
-                    self.get_absolute_path(to.as_ref()),
-                )
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
+        if self
+            .kernel
+            .copy_file(
+                self.get_absolute_path(from.as_ref()),
+                self.get_absolute_path(to.as_ref()),
+            )
+            .is_ok()
+        {
+            0
+        } else {
+            -1
         }
     }
 
     pub fn delete_file(&mut self, path: impl AsRef<Path>) -> i32 {
-        unsafe {
-            if KERNEL
-                .delete_file(self.get_absolute_path(path.as_ref()))
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
+        if self
+            .kernel
+            .delete_file(self.get_absolute_path(path.as_ref()))
+            .is_ok()
+        {
+            0
+        } else {
+            -1
         }
     }
 
     pub fn create_directory(&mut self, path: impl AsRef<Path>) -> i32 {
-        unsafe {
-            if KERNEL
-                .create_directory(self.get_absolute_path(path.as_ref()))
-                .is_ok()
-            {
-                0
-            } else {
-                -1
-            }
+        if self
+            .kernel
+            .create_directory(self.get_absolute_path(path.as_ref()))
+            .is_ok()
+        {
+            0
+        } else {
+            -1
         }
     }
 

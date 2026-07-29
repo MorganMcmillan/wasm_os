@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::task::Poll::{Pending, Ready};
 use std::task::{Context, Waker};
 
-use crate::KERNEL;
 use crate::event::Event;
-use crate::kernel::{Pid, ProcessLinker};
+use crate::kernel::{Kernel, Pid, ProcessLinker};
+use crate::mut_cell::MutCell;
 use crate::process::Process;
 use crate::ptr_cell::PtrCell;
 use crate::system_functions::load_system_functions;
@@ -72,6 +72,7 @@ fn get_imported_modules(module: &Module) -> (Vec<&str>, Vec<&str>) {
 
 // Dynamically loads the wasm library file
 fn load_libraries(
+    kernel: &'static MutCell<Kernel>,
     linker: &mut ProcessLinker,
     mut store: &mut ProcessStore,
     engine: &Engine,
@@ -83,11 +84,9 @@ fn load_libraries(
         library_path.push(library);
         library_path.set_extension("wasm");
 
-        unsafe {
-            if let Ok(bytes) = KERNEL.read_file(&library_path) {
-                let module = Module::new(engine, bytes)?;
-                linker.module(&mut store, library, &module)?;
-            }
+        if let Ok(bytes) = kernel.read_file(&library_path) {
+            let module = Module::new(engine, bytes)?;
+            linker.module(&mut store, library, &module)?;
         }
     }
 
@@ -96,6 +95,7 @@ fn load_libraries(
 
 impl WasmProcess {
     pub async fn new(
+        kernel: &'static MutCell<Kernel>,
         binary: Vec<u8>,
         engine: &Engine,
         mut process: Process,
@@ -110,9 +110,9 @@ impl WasmProcess {
 
         // Load functions
         load_system_functions(&mut linker)?;
-        unsafe {
-            KERNEL.load_driver_functions(&mut linker, &imported_drivers)?;
-        }
+        kernel
+            .borrow_static()
+            .load_driver_functions(&mut linker, &imported_drivers)?;
         println!("Imported drivers: {:?}", imported_drivers);
         println!("Imported libraries: {:?}", imported_libraries);
 
@@ -120,7 +120,7 @@ impl WasmProcess {
         // A store is used to store host-specific data of a given type.
         let mut store = Store::new(engine, process);
 
-        load_libraries(&mut linker, &mut store, engine, &imported_libraries)?;
+        load_libraries(kernel, &mut linker, &mut store, engine, &imported_libraries)?;
 
         // Configure preemptive interuption
         store.epoch_deadline_async_yield_and_update(1);
@@ -182,16 +182,20 @@ impl WasmProcess {
                         }
                     };
 
-                    unsafe {
-                        // Notify parent that child has exited.
-                        let parent = self_cell.get().store.data().parent_pid;
-                        if parent != Pid::default() {
-                            let pid = self_cell.get().store.data().pid;
-                            KERNEL.send_event("child_exited", &code.to_le_bytes(), pid, parent);
-                        }
-
-                        KERNEL.delete_process(pid);
+                    // Notify parent that child has exited.
+                    let kernel = self_cell.get().store.data().kernel;
+                    let parent = self_cell.get().store.data().parent_pid;
+                    if parent != Pid::default() {
+                        let pid = self_cell.get().store.data().pid;
+                        kernel.borrow_static().send_event(
+                            "child_exited",
+                            &code.to_le_bytes(),
+                            pid,
+                            parent,
+                        );
                     }
+
+                    kernel.borrow_static().delete_process(pid);
 
                     return code;
                 }
@@ -221,17 +225,21 @@ impl WasmProcess {
             let sym = event.interned_name();
 
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
-                KERNEL.set_current_event(&raw mut event);
+                self.store
+                    .data()
+                    .kernel
+                    .borrow_static()
+                    .set_current_event(&raw mut event);
                 let length = event.data().len();
 
                 let result = handler.call_async(&mut self.store, length as i32).await;
 
                 if let Err(e) = result {
-                    let event_name = KERNEL.get_event_name(sym);
+                    let event_name = self.store.data().kernel.get_event_name(sym);
                     eprintln!("Error in event handler {}: {}", event_name, e);
                 }
 
-                KERNEL.end_current_event();
+                self.store.data().kernel.borrow_static().end_current_event();
             }
         }
     }

@@ -1,10 +1,10 @@
 use raylib::{RaylibHandle, ffi::MouseButton};
 
 use crate::{
-    KERNEL,
     byte_builder::ByteBuilder,
     driver::{Driver, screen},
-    kernel::{ProcessContext, ProcessLinker},
+    kernel::{Kernel, ProcessContext, ProcessLinker},
+    mut_cell::MutCell,
 };
 
 /// Normalizes a given coordinate to be within `normalized_length`.
@@ -12,10 +12,10 @@ fn normalize_coordinate(x: i32, length: i32, normalized_length: i32) -> u16 {
     ((x * normalized_length) / length) as u16
 }
 
-fn send_mouse_event(name: &str, mx: u16, my: u16, button: u8) {
-    unsafe {
-        KERNEL.send_event_to_root(name, &ByteBuilder::new().u16(mx).u16(my).u8(button).build());
-    }
+fn send_mouse_event(kernel: &MutCell<Kernel>, name: &str, mx: u16, my: u16, button: u8) {
+    kernel
+        .borrow_static()
+        .send_event_to_root(name, &ByteBuilder::new().u16(mx).u16(my).u8(button).build());
 }
 
 pub struct InputState {
@@ -37,20 +37,25 @@ impl Driver for InputState {
     fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()> {
         let name = self.name();
 
-        linker.func_wrap(name, "get_mouse_x", move |_: ProcessContext| unsafe {
-            let mousestate = KERNEL.get_driver::<Self>(id);
+        linker.func_wrap(name, "get_mouse_x", move |ctx: ProcessContext| {
+            let mousestate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
             mousestate.x as i32
         })?;
 
-        linker.func_wrap(name, "get_mouse_y", move |_: ProcessContext| unsafe {
-            let mousestate = KERNEL.get_driver::<Self>(id);
+        linker.func_wrap(name, "get_mouse_y", move |ctx: ProcessContext| {
+            let mousestate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
             mousestate.y as i32
         })?;
 
         Ok(())
     }
 
-    fn update(&mut self, rl: &mut RaylibHandle, _thread: &raylib::RaylibThread) {
+    fn update(
+        &mut self,
+        kernel: &MutCell<Kernel>,
+        rl: &mut RaylibHandle,
+        _thread: &raylib::RaylibThread,
+    ) {
         let screen_width = rl.get_screen_width();
         let screen_height = rl.get_screen_height();
         let mx = rl.get_mouse_x();
@@ -79,9 +84,9 @@ impl Driver for InputState {
 
         while let Some(c) = rl.get_char_pressed() {
             if c.is_ascii() {
-                unsafe {
-                    KERNEL.send_event_to_root("char", &[c as u8]);
-                }
+                kernel
+                    .borrow_static()
+                    .send_event_to_root("char", &[c as u8]);
             }
         }
 
@@ -99,25 +104,23 @@ impl Driver for InputState {
 
         for (mouse_button, number) in MOUSE_BUTTON_NUMBERS {
             if rl.is_mouse_button_pressed(mouse_button) {
-                send_mouse_event("mouse_click", mx, my, number);
+                send_mouse_event(kernel, "mouse_click", mx, my, number);
             }
         }
 
         for (mouse_button, number) in MOUSE_BUTTON_NUMBERS {
             if rl.is_mouse_button_released(mouse_button) {
-                send_mouse_event("mouse_up", mx, my, number);
+                send_mouse_event(kernel, "mouse_up", mx, my, number);
             }
         }
 
         let mouse_wheel = rl.get_mouse_wheel_move_v().y as i32;
 
         if mouse_wheel != 0 {
-            unsafe {
-                KERNEL.send_event_to_root(
-                    "mouse_scroll",
-                    &ByteBuilder::new().u16(mx).u16(my).i32(mouse_wheel).build(),
-                );
-            }
+            kernel.borrow_static().send_event_to_root(
+                "mouse_scroll",
+                &ByteBuilder::new().u16(mx).u16(my).i32(mouse_wheel).build(),
+            );
         }
     }
 

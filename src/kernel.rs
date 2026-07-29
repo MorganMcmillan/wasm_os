@@ -23,12 +23,12 @@ use wasmtime::Caller;
 use wasmtime::Config;
 use wasmtime::Engine;
 
-use crate::KERNEL;
 use crate::async_file::AsyncFile;
 use crate::driver::Driver;
 use crate::event::Event;
 use crate::id::Id;
 use crate::id::IdStore;
+use crate::mut_cell::MutCell;
 use crate::process::Process;
 use crate::wasm_process::WasmProcess;
 
@@ -113,42 +113,41 @@ impl Kernel {
         !self.processes.id_is_valid(ROOT_PID)
     }
 
-    pub async fn run_boot(&mut self) {
-        let kptr = self as *mut Self;
-        unsafe {
-            let root_pid = self.create_boot_process().await;
-            let root = (*kptr).get_process_mut(root_pid).unwrap();
-            let join_handle = task::spawn(root.run());
+    pub async fn run_boot(kernel: &'static MutCell<Kernel>) {
+        let root_pid = Kernel::create_boot_process(kernel).await;
+        let root = kernel.borrow_static().get_process_mut(root_pid).unwrap();
+        let join_handle = task::spawn(root.run());
 
-            self.get_process_mut(root_pid)
-                .unwrap()
-                .store
-                .data_mut()
-                .set_join_handle(join_handle);
-        }
+        kernel
+            .borrow_static()
+            .get_process_mut(root_pid)
+            .unwrap()
+            .store
+            .data_mut()
+            .set_join_handle(join_handle);
     }
 
-    async fn create_boot_process(&mut self) -> Pid {
+    async fn create_boot_process(kernel: &'static MutCell<Kernel>) -> Pid {
         async fn create_boot_process(
-            kernel: &mut Kernel,
+            kernel: &'static MutCell<Kernel>,
             path: &str,
         ) -> Result<Pid, CreateProcessError> {
-            kernel
-                .create_process(
-                    path,
-                    Pid::default(),
-                    AsyncFile::stdin(),
-                    AsyncFile::stdout(),
-                    AsyncFile::stderr(),
-                )
-                .await
+            Kernel::create_process(
+                kernel,
+                path,
+                Pid::default(),
+                AsyncFile::stdin(),
+                AsyncFile::stdout(),
+                AsyncFile::stderr(),
+            )
+            .await
         }
 
-        let root_process = match create_boot_process(self, USER_BOOT_PROCESS).await {
+        let root_process = match create_boot_process(kernel, USER_BOOT_PROCESS).await {
             Err(CreateProcessError::FileNotFound) => {
-                match create_boot_process(self, ROM_BOOT_PROCESS).await {
+                match create_boot_process(kernel, ROM_BOOT_PROCESS).await {
                     Err(CreateProcessError::FileNotFound) => {
-                        create_boot_process(self, BIOS_BOOT_PROCESS).await
+                        create_boot_process(kernel, BIOS_BOOT_PROCESS).await
                     }
                     result => result,
                 }
@@ -166,20 +165,20 @@ impl Kernel {
     }
 
     pub async fn run_process(
-        &mut self,
+        kernel: &'static MutCell<Kernel>,
         path: &str,
         parent: Pid,
         stdin: AsyncFile,
         stdout: AsyncFile,
         stderr: AsyncFile,
     ) -> Result<Pid, CreateProcessError> {
-        let pid = self
-            .create_process(path, parent, stdin, stdout, stderr)
-            .await?;
-        let process = unsafe { KERNEL.get_process_mut(pid).unwrap() };
+        let pid = Kernel::create_process(kernel, path, parent, stdin, stdout, stderr).await?;
+        let process = kernel.borrow_static().get_process_mut(pid).unwrap();
         let join_handle = task::spawn(process.run());
 
-        self.get_process_mut(pid)
+        kernel
+            .borrow_static()
+            .get_process_mut(pid)
             .unwrap()
             .store
             .data_mut()
@@ -290,7 +289,7 @@ impl Kernel {
     }
 
     pub async fn create_process(
-        &mut self,
+        kernel: &'static MutCell<Kernel>,
         path: &str,
         parent: Pid,
         stdin: AsyncFile,
@@ -301,7 +300,7 @@ impl Kernel {
             return Err(CreateProcessError::IncorrectFileType);
         }
 
-        let binary = self.read_file(path)?;
+        let binary = kernel.read_file(path)?;
         let path = std::path::Path::new(path);
         let label = path
             .file_stem()
@@ -311,7 +310,8 @@ impl Kernel {
         let cwd = if parent.number() == 0 {
             PathBuf::new()
         } else {
-            self.get_process(parent)
+            kernel
+                .get_process(parent)
                 .unwrap()
                 .store
                 .data()
@@ -319,15 +319,15 @@ impl Kernel {
                 .clone()
         };
 
-        let mut process = Process::new(parent, label, cwd, stdin, stdout, stderr);
+        let mut process = Process::new(kernel, parent, label, cwd, stdin, stdout, stderr);
 
-        for (id, driver) in self.drivers.iter_mut().enumerate() {
+        for (id, driver) in kernel.borrow_static().drivers.iter_mut().enumerate() {
             if let Some(process_state) = driver.create_process_state() {
                 process.add_driver_state(id, process_state);
             }
         }
 
-        let wasm_process = match WasmProcess::new(binary, &self.engine, process).await {
+        let wasm_process = match WasmProcess::new(kernel, binary, &kernel.engine, process).await {
             Ok(w) => w,
             Err(e) => {
                 eprintln!("Wasm error: {:?}", e);
@@ -335,9 +335,11 @@ impl Kernel {
             }
         };
 
-        let pid = self.processes.new_id(wasm_process);
+        let pid = kernel.borrow_static().processes.new_id(wasm_process);
 
-        self.get_process_mut(pid)
+        kernel
+            .borrow_static()
+            .get_process_mut(pid)
             .unwrap()
             .store
             .data_mut()
@@ -345,7 +347,9 @@ impl Kernel {
 
         // If not root process:
         if parent.number() != 0 {
-            self.get_process_mut(parent)
+            kernel
+                .borrow_static()
+                .get_process_mut(parent)
                 .expect("Expected a parent process to exist.")
                 .store
                 .data_mut()
@@ -367,13 +371,17 @@ impl Kernel {
         self.processes.data_mut(pid)
     }
 
-    pub fn update(&mut self, rl: &mut RaylibHandle, thread: &raylib::RaylibThread) {
+    pub fn update(
+        kernel: &'static MutCell<Kernel>,
+        rl: &mut RaylibHandle,
+        thread: &raylib::RaylibThread,
+    ) {
         if rl.is_key_pressed(KeyboardKey::KEY_F11) {
             rl.toggle_fullscreen();
         }
 
-        for driver in self.drivers.iter_mut() {
-            driver.update(rl, thread);
+        for driver in kernel.borrow_static().drivers.iter_mut() {
+            driver.update(kernel, rl, thread);
         }
     }
 

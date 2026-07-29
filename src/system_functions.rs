@@ -5,38 +5,43 @@ use tokio::task::yield_now;
 use tokio::time::sleep;
 use wasmtime::Linker;
 
-use crate::KERNEL;
 use crate::async_file::AsyncFile;
 use crate::id::Id;
-use crate::kernel::{Pid, ProcessContext};
+use crate::kernel::{Kernel, Pid, ProcessContext};
 use crate::process::Process;
 
 #[allow(mismatched_lifetime_syntaxes)]
-pub fn get_memory(ctx: *const ProcessContext, mem_ptr: i32, mem_len: i32) -> Result<&[u8], i32> {
-    unsafe {
-        let process = KERNEL.get_process_mut((*ctx).data().pid).unwrap();
+pub fn get_memory(ctx: &ProcessContext, mem_ptr: i32, mem_len: i32) -> Result<&'static [u8], i32> {
+    let process = ctx
+        .data()
+        .kernel
+        .borrow_static()
+        .get_process_mut(ctx.data().pid)
+        .unwrap();
 
-        let mem = process.get_memory(mem_ptr as usize, mem_len as usize);
-        Ok(mem)
-    }
+    let mem = process.get_memory(mem_ptr as usize, mem_len as usize);
+    Ok(mem)
 }
 
 #[allow(mismatched_lifetime_syntaxes)]
 pub fn get_memory_mut(
-    ctx: *const ProcessContext,
+    ctx: &ProcessContext,
     mem_ptr: i32,
     mem_len: i32,
-) -> Result<&mut [u8], i32> {
-    unsafe {
-        let process = KERNEL.get_process_mut((*ctx).data().pid).unwrap();
+) -> Result<&'static mut [u8], i32> {
+    let process = ctx
+        .data()
+        .kernel
+        .borrow_static()
+        .get_process_mut(ctx.data().pid)
+        .unwrap();
 
-        let mem = process.get_memory_mut(mem_ptr as usize, mem_len as usize);
-        Ok(mem)
-    }
+    let mem = process.get_memory_mut(mem_ptr as usize, mem_len as usize);
+    Ok(mem)
 }
 
 #[allow(mismatched_lifetime_syntaxes)]
-fn get_str(ctx: *const ProcessContext, str_ptr: i32, str_len: i32) -> Result<&str, i32> {
+fn get_str(ctx: &ProcessContext, str_ptr: i32, str_len: i32) -> Result<&'static str, i32> {
     let string = get_memory(ctx, str_ptr, str_len)?;
     let Ok(string) = str::from_utf8(string) else {
         return Err(-2);
@@ -76,19 +81,23 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             let pid = ctx.data().pid;
 
             Box::new(async move {
-                unsafe {
-                    let path = match result {
-                        Ok(p) => p,
-                        Err(_) => return 0,
-                    };
+                let path = match result {
+                    Ok(p) => p,
+                    Err(_) => return 0,
+                };
 
-                    match KERNEL
-                        .run_process(path, pid, AsyncFile::Null, AsyncFile::Null, AsyncFile::Null)
-                        .await
-                    {
-                        Ok(id) => id.as_i32(),
-                        Err(_) => 0,
-                    }
+                match Kernel::run_process(
+                    ctx.data().kernel,
+                    path,
+                    pid,
+                    AsyncFile::Null,
+                    AsyncFile::Null,
+                    AsyncFile::Null,
+                )
+                .await
+                {
+                    Ok(id) => id.as_i32(),
+                    Err(_) => 0,
                 }
             })
         },
@@ -138,7 +147,12 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Err(e) => return e,
             };
 
-            unsafe { KERNEL.send_event(name, data, ctx.data().pid, Pid::from_i32(to_pid)) }
+            ctx.data().kernel.borrow_static().send_event(
+                name,
+                data,
+                ctx.data().pid,
+                Pid::from_i32(to_pid),
+            )
         },
     )?;
 
@@ -146,34 +160,40 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "env",
         "resend_event",
         |ctx: ProcessContext, to_pid: i32| -> i32 {
-            unsafe {
-                let event = KERNEL.get_current_event();
-                let pid = ctx.data().pid;
-                KERNEL.resend_event(event, pid, Pid::from_i32(to_pid))
-            }
+            let event = ctx.data().kernel.get_current_event();
+            let pid = ctx.data().pid;
+            ctx.data()
+                .kernel
+                .borrow_static()
+                .resend_event(event, pid, Pid::from_i32(to_pid))
         },
     )?;
 
     linker.func_wrap(
         "env",
         "get_event_data",
-        |ctx: ProcessContext, buf_ptr: i32, buf_len: i32| unsafe {
+        |ctx: ProcessContext, buf_ptr: i32, buf_len: i32| {
             let buf_ptr = buf_ptr as usize;
             let buf_len = buf_len as usize;
 
-            let event = KERNEL.get_current_event();
+            let event = ctx.data().kernel.get_current_event();
             let mut data = event.data();
             if data.len() < buf_len {
                 data = &data[..buf_len]
             }
-            let process = KERNEL.get_process_mut(ctx.data().pid).unwrap();
+            let process = ctx
+                .data()
+                .kernel
+                .borrow_static()
+                .get_process_mut(ctx.data().pid)
+                .unwrap();
 
             process.set_memory(buf_ptr, data);
         },
     )?;
 
-    linker.func_wrap("env", "get_event_sender", |_: ProcessContext| -> i32 {
-        let event = unsafe { KERNEL.get_current_event() };
+    linker.func_wrap("env", "get_event_sender", |ctx: ProcessContext| -> i32 {
+        let event = ctx.data().kernel.get_current_event();
         event.sent_by_pid.as_i32()
     })?;
 
@@ -185,7 +205,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Ok(n) => n,
                 Err(e) => return e,
             };
-            let interned_name = unsafe { KERNEL.intern_event_name(name) };
+            let interned_name = ctx.data().kernel.borrow_static().intern_event_name(name);
 
             let handler = ctx
                 .get_export(name)
@@ -208,7 +228,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Ok(o) => o,
                 Err(e) => return e,
             };
-            let interned_name = unsafe { KERNEL.intern_event_name(name) };
+            let interned_name = ctx.data().kernel.borrow_static().intern_event_name(name);
 
             ctx.data_mut().remove_event_handler(interned_name);
             0
@@ -224,16 +244,16 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             let dest = dest as usize;
             let len = len as usize;
 
-            unsafe {
-                let Some(src_proc) = KERNEL.get_process(src_pid) else {
-                    return 1;
-                };
+            let Some(src_proc) = ctx.data().kernel.get_process(src_pid) else {
+                return 1;
+            };
 
-                KERNEL
-                    .get_process_mut(ctx.data().pid)
-                    .unwrap()
-                    .set_memory(dest, src_proc.get_memory(src, len));
-            }
+            ctx.data()
+                .kernel
+                .borrow_static()
+                .get_process_mut(ctx.data().pid)
+                .unwrap()
+                .set_memory(dest, src_proc.get_memory(src, len));
             0
         },
     )?;
@@ -247,10 +267,13 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Err(e) => return e,
             };
 
-            unsafe {
-                if !KERNEL.set_process_name(ctx.data().pid, name) {
-                    return -1;
-                }
+            if !ctx
+                .data()
+                .kernel
+                .borrow_static()
+                .set_process_name(ctx.data().pid, name)
+            {
+                return -1;
             }
 
             0
@@ -267,12 +290,12 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 return 0;
             }
 
-            unsafe {
-                KERNEL
-                    .get_process_mut(ctx.data().pid)
-                    .unwrap()
-                    .set_memory(buf_ptr as usize, bytes);
-            }
+            ctx.data()
+                .kernel
+                .borrow_static()
+                .get_process_mut(ctx.data().pid)
+                .unwrap()
+                .set_memory(buf_ptr as usize, bytes);
 
             bytes.len() as i32
         },
@@ -287,7 +310,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                 Err(_) => return 0,
             };
 
-            unsafe { KERNEL.get_pid_by_name(name).as_i32() }
+            ctx.data().kernel.get_pid_by_name(name).as_i32()
         },
     )?;
 

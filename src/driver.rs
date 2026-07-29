@@ -2,7 +2,10 @@ use std::any::Any;
 
 use raylib::{RaylibHandle, RaylibThread};
 
-use crate::kernel::ProcessLinker;
+use crate::{
+    kernel::{Kernel, ProcessLinker},
+    mut_cell::MutCell,
+};
 
 pub mod audio;
 pub mod input;
@@ -18,7 +21,12 @@ pub trait Driver: Any {
     fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()>;
 
     /// Update this driver's state whenever the kernel's update executes.
-    fn update(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread);
+    fn update(
+        &mut self,
+        kernel: &'static MutCell<Kernel>,
+        rl: &mut RaylibHandle,
+        thread: &RaylibThread,
+    );
 
     // Creates an optional per-process state.
     fn create_process_state(&mut self) -> Option<Box<dyn Any + Send>> {
