@@ -1,4 +1,8 @@
-use std::{any::Any, num::NonZeroU32};
+use std::{
+    any::Any,
+    num::NonZeroU32,
+    sync::{Arc, Mutex},
+};
 
 use rodio::{MixerDeviceSink, Player, nz};
 
@@ -10,45 +14,97 @@ use crate::{
 };
 
 pub const SAMPLE_RATE: u32 = 44100;
+const MAX_SAMPLES: usize = 32768;
 
-// TODO: currently only single channel audio is supported. To support 2 channels, samples from both
-// will have to be interleaved
-
-pub struct PcmBuffer {
-    samples: Box<[u8]>,
-    pos: usize,
+pub struct SampleQueue {
+    buffer: [u8; MAX_SAMPLES],
+    tail: Mutex<u16>,
+    length: Mutex<u16>,
+    process_exited: bool,
+    // A sample that was possibly skipped while being added to the queue
+    skipped_right: Option<u8>,
 }
 
-impl PcmBuffer {
-    pub fn new(samples: &[u8]) -> Self {
+impl SampleQueue {
+    fn new() -> Self {
         Self {
-            samples: samples.to_owned().into(),
-            pos: 0,
+            buffer: [0; MAX_SAMPLES],
+            tail: Mutex::new(0),
+            length: Mutex::new(0),
+            process_exited: false,
+            skipped_right: None,
         }
+    }
+
+    fn push(&mut self, sample: u8) -> bool {
+        let mut length = self.length.lock().unwrap();
+        if *length == MAX_SAMPLES as u16 {
+            return false;
+        }
+
+        let head = (*self.tail.lock().unwrap() + *length) % MAX_SAMPLES as u16;
+        self.buffer[head as usize] = sample;
+        *length += 1;
+
+        true
+    }
+
+    fn push_sample(&mut self, left: u8, right: u8) -> bool {
+        if let Some(skipped_right) = self.skipped_right {
+            if self.push(skipped_right) {
+                self.skipped_right = None;
+            } else {
+                return false;
+            }
+        }
+
+        if !self.push(left) {
+            self.skipped_right = Some(right);
+            return true;
+        }
+
+        if !self.push(right) {
+            return false;
+        }
+
+        true
     }
 }
 
-impl Iterator for PcmBuffer {
+unsafe impl Send for SampleQueue {}
+unsafe impl Sync for SampleQueue {}
+
+impl Iterator for SampleQueue {
     type Item = rodio::Sample;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let sample = *self.samples.get(self.pos)?;
-        self.pos += 1;
+        if self.process_exited {
+            return None;
+        }
+
+        let mut length = self.length.lock().unwrap();
+        if *length == 0 {
+            return Some(0.0);
+        }
+
+        let mut tail = self.tail.lock().unwrap();
+
+        let sample = self.buffer[*tail as usize];
+
+        *tail = (*tail + 1) % MAX_SAMPLES as u16;
+        *length -= 1;
+
         Some(sample as rodio::Sample / 255.0)
     }
 }
 
-impl rodio::Source for PcmBuffer {
+impl rodio::Source for SampleQueue {
     fn current_span_len(&self) -> Option<usize> {
-        if self.pos >= self.samples.len() {
-            Some(0)
-        } else {
-            Some(self.samples.len())
-        }
+        None
     }
 
     fn channels(&self) -> rodio::ChannelCount {
-        nz!(1)
+        nz!(2)
     }
 
     fn sample_rate(&self) -> rodio::SampleRate {
@@ -97,17 +153,23 @@ impl Driver for AudioState {
         linker.func_wrap(
             name,
             "play_sound",
-            move |mut ctx: ProcessContext, sound_ptr: i32, sound_len: i32| {
+            move |mut ctx: ProcessContext,
+                  sound_ptr: i32,
+                  sound_len: i32,
+                  left_volume: i32,
+                  right_volume: i32| {
+                let left_volume = left_volume.min(255) as u8;
+                let right_volume = right_volume.min(255) as u8;
+
                 let sound = match system_functions::get_memory(&ctx, sound_ptr, sound_len) {
                     Ok(sound) => sound,
                     Err(e) => return e,
                 };
 
-                let samples = PcmBuffer::new(sound);
                 ctx.data_mut()
                     .get_driver_state_mut::<ProcessAudioState>(id)
                     .unwrap()
-                    .play(samples);
+                    .play(sound, left_volume, right_volume);
                 0
             },
         )?;
@@ -122,14 +184,26 @@ impl Driver for AudioState {
 
 pub struct ProcessAudioState {
     player: Player,
+    sample_buffer: SampleQueue,
 }
 
 impl ProcessAudioState {
     pub fn new(player: Player) -> Self {
-        Self { player }
+        let sample_buffer = SampleQueue::new();
+        player.append(&sample_buffer);
+        Self {
+            player,
+            sample_buffer,
+        }
     }
 
-    pub fn play(&self, samples: PcmBuffer) {
-        self.player.append(samples);
+    pub fn play(&mut self, samples: &[u8], left_volume: u8, right_volue: u8) -> usize {
+        for (i, &sample) in samples.iter().enumerate() {
+            let (left, right) = split_sample(sample, left_volume, right_volue);
+            if !self.sample_buffer.push_sample(left, right) {
+                return i;
+            }
+        }
+        samples.len()
     }
 }

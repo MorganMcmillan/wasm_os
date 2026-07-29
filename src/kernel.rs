@@ -288,6 +288,11 @@ impl Kernel {
         self.ambient_dir.create_dir(path)
     }
 
+    #[allow(unused)]
+    pub fn create_file(&self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.ambient_dir.create(path).map(|_| ())
+    }
+
     pub async fn create_process(
         kernel: &'static MutCell<Kernel>,
         path: &str,
@@ -512,7 +517,7 @@ mod tests {
         let _ = kernel.create_directory("foo");
         kernel.move_file("foo", "bar").unwrap();
         assert!(kernel.is_directory("bar"));
-        assert!(!kernel.is_directory("foo"));
+        assert!(!kernel.file_exists("foo"));
         kernel.delete_file("bar").unwrap();
 
         Ok(())
@@ -523,10 +528,10 @@ mod tests {
         let root_dir = "test_dir";
         let kernel = Kernel::new(root_dir.as_ref(), vec![]);
 
-        let _ = kernel.create_directory("foo");
+        kernel.create_file("foo").unwrap();
         kernel.copy_file("foo", "bar").unwrap();
-        assert!(kernel.is_directory("bar"));
-        assert!(kernel.is_directory("foo"));
+        assert!(kernel.is_file("bar"));
+        assert!(kernel.is_file("foo"));
         kernel.delete_file("foo").unwrap();
         kernel.delete_file("bar").unwrap();
 
