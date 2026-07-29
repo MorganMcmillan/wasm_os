@@ -110,6 +110,12 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         })
     })?;
 
+    linker.func_wrap_async("env", "yield_now", |_: ProcessContext, _: ()| {
+        Box::new(async {
+            yield_now().await;
+        })
+    })?;
+
     // Inter-process communication
 
     linker.func_wrap(
@@ -400,13 +406,11 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                     Err(e) => return e,
                 };
 
-                match ctx
-                    .data_mut()
-                    .get_file(Id::from_i32(fd))
-                    .unwrap()
-                    .read(buf)
-                    .await
-                {
+                let Some(file) = ctx.data_mut().get_file(Id::from_i32(fd)) else {
+                    return -2;
+                };
+
+                match file.read(buf).await {
                     Ok(bytes) => bytes as i32,
                     Err(_) => -1,
                 }
@@ -424,13 +428,11 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
                     Err(e) => return e,
                 };
 
-                match ctx
-                    .data_mut()
-                    .get_file(Id::from_i32(fd))
-                    .unwrap()
-                    .write(src)
-                    .await
-                {
+                let Some(file) = ctx.data_mut().get_file(Id::from_i32(fd)) else {
+                    return -2;
+                };
+
+                match file.write(src).await {
                     Ok(bytes) => bytes as i32,
                     Err(_) => -1,
                 }
@@ -443,13 +445,11 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
         "seek",
         |mut ctx: ProcessContext, (fd, offset, from): (i32, i32, i32)| {
             Box::new(async move {
-                match ctx
-                    .data_mut()
-                    .get_file(Id::from_i32(fd))
-                    .unwrap()
-                    .seek(offset as i64, from as u8)
-                    .await
-                {
+                let Some(file) = ctx.data_mut().get_file(Id::from_i32(fd)) else {
+                    return -2;
+                };
+
+                match file.seek(offset as i64, from as u8).await {
                     Ok(new_offset) => new_offset as i32,
                     Err(_) => -1,
                 }
@@ -459,7 +459,7 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
 
     linker.func_wrap(
         "env",
-        "close_file`",
+        "close_file",
         |mut ctx: ProcessContext, fd: i32| -> i32 {
             if ctx.data_mut().open_files.delete_id(Id::from_i32(fd)) {
                 0
@@ -541,14 +541,6 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
             ctx.data_mut().create_directory(path)
         },
     )?;
-
-    // Process
-
-    linker.func_wrap_async("env", "yield_now", |_: ProcessContext, _: ()| {
-        Box::new(async {
-            yield_now().await;
-        })
-    })?;
 
     Ok(())
 }

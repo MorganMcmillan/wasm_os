@@ -7,11 +7,11 @@ name = "audio"
 version = "0.1.0"
 
 [[package]]
-name = "draw"
+name = "input"
 version = "0.1.0"
 
 [[package]]
-name = "input"
+name = "screen"
 version = "0.1.0"
 
 [[package]]

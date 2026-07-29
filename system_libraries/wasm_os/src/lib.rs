@@ -31,6 +31,9 @@ unsafe extern "C" {
         to_pid: i32,
     ) -> i32;
 
+    #[link_name = "resend_event"]
+    fn extern_resend_event(to_pid: i32) -> i32;
+
     #[link_name = "get_event_data"]
     fn extern_get_event_data(buf_ptr: *mut u8, buf_len: i32);
 
@@ -57,6 +60,54 @@ unsafe extern "C" {
 
     #[link_name = "yield_now"]
     fn extern_yield_now();
+
+    #[link_name = "is_directory"]
+    fn extern_is_directory(path_ptr: *const u8, path_len: i32) -> i32;
+
+    #[link_name = "is_file"]
+    fn extern_is_file(path_ptr: *const u8, path_len: i32) -> i32;
+
+    #[link_name = "file_exists"]
+    fn extern_file_exists(path_ptr: *const u8, path_len: i32) -> i32;
+
+    #[link_name = "file_size"]
+    fn extern_file_size(path_ptr: *const u8, path_len: i32) -> i32;
+
+    #[link_name = "file_created"]
+    fn extern_file_created(path_ptr: *const u8, path_len: i32) -> i64;
+
+    #[link_name = "file_accessed"]
+    fn extern_file_accessed(path_ptr: *const u8, path_len: i32) -> i64;
+
+    #[link_name = "file_modified"]
+    fn extern_file_modified(path_ptr: *const u8, path_len: i32) -> i64;
+
+    #[link_name = "open_file"]
+    fn extern_open_file(path_ptr: *const u8, path_len: i32) -> i32;
+
+    #[link_name = "read_file"]
+    fn extern_read_file(fd: i32, buf_ptr: *mut u8, buf_len: i32) -> i32;
+
+    #[link_name = "write_file"]
+    fn extern_write_file(fd: i32, src_ptr: *mut u8, src_len: i32) -> i32;
+
+    #[link_name = "seek"]
+    fn extern_seek(fd: i32, offset: i32, from: i32) -> i32;
+
+    #[link_name = "close_file"]
+    fn extern_close_file(fd: i32) -> i32;
+
+    #[link_name = "change_directory"]
+    fn extern_change_directory(path_ptr: *const u8, path_len: i32) -> i32;
+
+    #[link_name = "move_file"]
+    fn extern_move_file(from_ptr: *const u8, from_len: i32, to_ptr: *const u8, to_len: i32) -> i32;
+
+    #[link_name = "copy_file"]
+    fn extern_copy_file(from_ptr: *const u8, from_len: i32, to_ptr: *const u8, to_len: i32) -> i32;
+
+    #[link_name = "create_directory"]
+    fn extern_create_directory(path_ptr: *const u8, path_len: i32) -> i32;
 }
 
 pub fn debug_print(bytes: &[u8]) -> i32 {
@@ -98,6 +149,10 @@ pub fn send_event(name: &str, data: &[u8], to_pid: i32) -> i32 {
     }
 }
 
+pub fn resend_event(to_pid: i32) -> i32 {
+    unsafe { extern_resend_event(to_pid) }
+}
+
 pub fn get_event_data(buffer: &mut [u8]) {
     unsafe { extern_get_event_data(buffer.as_mut_ptr(), buffer.len() as i32) }
 }
@@ -132,4 +187,85 @@ pub fn get_pid_by_name(name: &str) -> i32 {
 
 pub fn yield_now() {
     unsafe { extern_yield_now() }
+}
+
+pub mod fs {
+    use super::*;
+
+    pub fn is_directory(path: &str) -> bool {
+        unsafe { extern_is_directory(path.as_ptr(), path.len() as i32) != 0 }
+    }
+
+    pub fn is_file(path: &str) -> bool {
+        unsafe { extern_is_file(path.as_ptr(), path.len() as i32) != 0 }
+    }
+
+    pub fn exists(path: &str) -> bool {
+        unsafe { extern_file_exists(path.as_ptr(), path.len() as i32) != 0 }
+    }
+
+    pub fn size(path: &str) -> i32 {
+        unsafe { extern_file_size(path.as_ptr(), path.len() as i32) }
+    }
+
+    pub fn created(path: &str) -> i64 {
+        unsafe { extern_file_created(path.as_ptr(), path.len() as i32) }
+    }
+
+    pub fn accessed(path: &str) -> i64 {
+        unsafe { extern_file_accessed(path.as_ptr(), path.len() as i32) }
+    }
+    pub fn modified(path: &str) -> i64 {
+        unsafe { extern_file_modified(path.as_ptr(), path.len() as i32) }
+    }
+
+    pub fn open(path: &str) -> i32 {
+        unsafe { extern_open_file(path.as_ptr(), path.len() as i32) }
+    }
+
+    pub fn read(fd: i32, buf: &mut [u8]) -> i32 {
+        unsafe { extern_read_file(fd, buf.as_mut_ptr(), buf.len() as i32) }
+    }
+
+    pub fn write(fd: i32, buf: &mut [u8]) -> i32 {
+        unsafe { extern_write_file(fd, buf.as_mut_ptr(), buf.len() as i32) }
+    }
+
+    pub fn seek(fd: i32, offset: i32, from: u8) -> i32 {
+        unsafe { extern_seek(fd, offset, from as i32) }
+    }
+
+    pub fn close(fd: i32) -> i32 {
+        unsafe { extern_close_file(fd) }
+    }
+
+    pub fn change_directory(path: &str) -> i32 {
+        unsafe { extern_change_directory(path.as_ptr(), path.len() as i32) }
+    }
+
+    pub fn move_file(from: &str, to: &str) -> i32 {
+        unsafe {
+            extern_move_file(
+                from.as_ptr(),
+                from.len() as i32,
+                to.as_ptr(),
+                to.len() as i32,
+            )
+        }
+    }
+
+    pub fn copy_file(from: &str, to: &str) -> i32 {
+        unsafe {
+            extern_copy_file(
+                from.as_ptr(),
+                from.len() as i32,
+                to.as_ptr(),
+                to.len() as i32,
+            )
+        }
+    }
+
+    pub fn create_directory(path: &str) -> i32 {
+        unsafe { extern_create_directory(path.as_ptr(), path.len() as i32) }
+    }
 }
