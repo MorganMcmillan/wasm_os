@@ -61,17 +61,13 @@ impl rodio::Source for PcmBuffer {
 
 pub struct AudioState {
     handle: MixerDeviceSink,
-    driver_id: usize,
 }
 
 impl AudioState {
     pub fn new() -> Self {
         let handle = rodio::DeviceSinkBuilder::open_default_sink().unwrap();
 
-        Self {
-            handle,
-            driver_id: 0,
-        }
+        Self { handle }
     }
 }
 
@@ -82,23 +78,14 @@ impl Driver for AudioState {
 
     fn update(&mut self, _rl: &mut raylib::RaylibHandle, _thread: &raylib::RaylibThread) {}
 
-    fn accept_id(&mut self, id: usize) {
-        self.driver_id = id;
-    }
-
-    fn get_id(&self) -> usize {
-        self.driver_id
-    }
-
     fn create_process_state(&mut self) -> Option<Box<dyn Any + Send>> {
         Some(Box::new(ProcessAudioState::new(Player::connect_new(
             self.handle.mixer(),
         ))))
     }
 
-    fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+    fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()> {
         let name = self.name();
-        let id = self.driver_id;
 
         linker.func_wrap(
             name,

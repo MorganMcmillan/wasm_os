@@ -10,7 +10,9 @@ use std::ptr::NonNull;
 use std::time::Duration;
 
 use cap_std::ambient_authority;
+use cap_std::fs::MetadataExt;
 use cap_std::fs::OpenOptions;
+use cap_std::time::SystemTime;
 use raylib::RaylibHandle;
 use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
@@ -72,14 +74,10 @@ fn create_system_folders(root_dir: &cap_std::fs::Dir) {
 }
 
 impl Kernel {
-    pub fn new(root_dir: &Path, mut drivers: Vec<Box<dyn Driver>>) -> Self {
+    pub fn new(root_dir: &Path, drivers: Vec<Box<dyn Driver>>) -> Self {
         let mut config = Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
         config.epoch_interruption(true);
-
-        for (id, driver) in drivers.iter_mut().enumerate() {
-            driver.accept_id(id);
-        }
 
         let engine = Engine::new(&config).unwrap();
         let engine_clone = engine.clone();
@@ -193,12 +191,10 @@ impl Kernel {
         self.ambient_dir.is_dir(path)
     }
 
-    #[allow(unused)]
     pub fn is_file(&self, path: impl AsRef<Path>) -> bool {
         self.ambient_dir.is_file(path)
     }
 
-    #[allow(unused)]
     pub fn file_exists(&self, path: impl AsRef<Path>) -> bool {
         self.ambient_dir.exists(path)
     }
@@ -207,12 +203,27 @@ impl Kernel {
         self.ambient_dir.canonicalize(path)
     }
 
+    pub fn file_size(&self, path: impl AsRef<Path>) -> io::Result<u64> {
+        self.ambient_dir.metadata(path).map(|md| md.size())
+    }
+
+    pub fn file_created(&self, path: impl AsRef<Path>) -> io::Result<SystemTime> {
+        self.ambient_dir.metadata(path).and_then(|md| md.created())
+    }
+
+    pub fn file_accessed(&self, path: impl AsRef<Path>) -> io::Result<SystemTime> {
+        self.ambient_dir.metadata(path).and_then(|md| md.accessed())
+    }
+
+    pub fn file_modified(&self, path: impl AsRef<Path>) -> io::Result<SystemTime> {
+        self.ambient_dir.metadata(path).and_then(|md| md.modified())
+    }
+
     pub fn open_async_file(
         &self,
         path: impl AsRef<Path>,
         mode: u8,
     ) -> Result<tokio::fs::File, io::Error> {
-        // TODO: move these into the wasm_os system library
         const OPTION_WRITE: u8 = 0b1;
         const OPTION_APPEND: u8 = 0b10;
         const OPTION_CREATE: u8 = 0b100;
@@ -286,8 +297,6 @@ impl Kernel {
         }
 
         let binary = self.read_file(path)?;
-
-        // TODO: figure out better way to handle process ids
         let path = std::path::Path::new(path);
         let label = path
             .file_stem()
@@ -307,9 +316,9 @@ impl Kernel {
 
         let mut process = Process::new(parent, label, cwd, stdin, stdout, stderr);
 
-        for driver in self.drivers.iter_mut() {
+        for (id, driver) in self.drivers.iter_mut().enumerate() {
             if let Some(process_state) = driver.create_process_state() {
-                process.add_driver_state(driver.get_id(), process_state);
+                process.add_driver_state(id, process_state);
             }
         }
 
@@ -365,10 +374,10 @@ impl Kernel {
 
     // Drivers
 
-    pub fn get_driver_by_name(&mut self, name: &str) -> Option<&mut dyn Driver> {
-        for driver in self.drivers.iter_mut() {
+    pub fn get_driver_by_name(&mut self, name: &str) -> Option<(usize, &mut dyn Driver)> {
+        for (id, driver) in self.drivers.iter_mut().enumerate() {
             if driver.name() == name {
-                return Some(driver.as_mut());
+                return Some((id, driver.as_mut()));
             }
         }
         None
@@ -381,8 +390,8 @@ impl Kernel {
         imported_modules: &[&str],
     ) -> wasmtime::Result<()> {
         for driver_name in imported_modules.iter().copied() {
-            if let Some(driver) = self.get_driver_by_name(driver_name) {
-                driver.register_functions(linker)?;
+            if let Some((id, driver)) = self.get_driver_by_name(driver_name) {
+                driver.register_functions(linker, id)?;
             }
         }
 
@@ -456,6 +465,8 @@ impl Kernel {
             .resolve(interned_name)
             .unwrap_or("NO_EVENT_NAME")
     }
+
+    // Proceses
 
     pub fn set_process_name(&mut self, pid: Pid, name: &str) -> bool {
         match self.process_names.entry(name.into()) {

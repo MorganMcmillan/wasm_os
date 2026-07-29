@@ -4,13 +4,12 @@ use raylib::{
     RaylibHandle,
     ffi::{KeyboardKey, MouseButton},
 };
-use rodio::Player;
 
 use crate::{
     KERNEL,
     byte_builder::ByteBuilder,
-    driver::{Driver, draw},
-    kernel::{self, ProcessContext, ProcessLinker},
+    driver::{Driver, screen},
+    kernel::{ProcessContext, ProcessLinker},
 };
 
 /// Normalizes a given coordinate to be within `normalized_length`.
@@ -24,20 +23,14 @@ fn send_mouse_event(name: &str, mx: u16, my: u16, button: u8) {
     }
 }
 
-#[derive(Debug)]
 pub struct InputState {
     pub x: u16,
     pub y: u16,
-    driver_id: usize,
 }
 
 impl InputState {
     pub fn new() -> Self {
-        Self {
-            x: 0,
-            y: 0,
-            driver_id: 0,
-        }
+        Self { x: 0, y: 0 }
     }
 }
 
@@ -46,9 +39,8 @@ impl Driver for InputState {
         "driver_input"
     }
 
-    fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+    fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()> {
         let name = self.name();
-        let id = self.driver_id;
 
         linker.func_wrap(name, "get_mouse_x", move |_: ProcessContext| unsafe {
             let mousestate = KERNEL.get_driver::<Self>(id);
@@ -69,8 +61,8 @@ impl Driver for InputState {
         let mx = rl.get_mouse_x();
         let my = rl.get_mouse_y();
 
-        let mx = normalize_coordinate(mx, screen_width, draw::FRAMEBUFFER_WIDTH as i32);
-        let my = normalize_coordinate(my, screen_height, draw::FRAMEBUFFER_HEIGHT as i32);
+        let mx = normalize_coordinate(mx, screen_width, screen::FRAMEBUFFER_WIDTH as i32);
+        let my = normalize_coordinate(my, screen_height, screen::FRAMEBUFFER_HEIGHT as i32);
         self.x = mx;
         self.y = my;
 
@@ -132,14 +124,6 @@ impl Driver for InputState {
                 );
             }
         }
-    }
-
-    fn accept_id(&mut self, id: usize) {
-        self.driver_id = id;
-    }
-
-    fn get_id(&self) -> usize {
-        self.driver_id
     }
 
     fn as_any(&mut self) -> &mut dyn std::any::Any {

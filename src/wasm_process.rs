@@ -89,11 +89,8 @@ impl WasmProcess {
         // Load functions
         load_system_functions(&mut linker)?;
         unsafe {
-            // TODO: replace with checking which drivers the compiled module references and only
-            // loading the ones it needs
             KERNEL.load_driver_functions(&mut linker, &imported_drivers)?;
         }
-        // TODO: look inside the `lib` directory and load libraries from `imported_libraries`
         println!("Imported drivers: {:?}", imported_drivers);
         println!("Imported libraries: {:?}", imported_libraries);
 

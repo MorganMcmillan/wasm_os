@@ -4,8 +4,8 @@ use raylib::prelude::*;
 use tokio::task::{spawn_local, yield_now};
 
 use crate::driver::audio::AudioState;
-use crate::driver::draw::DrawState;
 use crate::driver::input::InputState;
+use crate::driver::screen::ScreenState;
 use crate::kernel::Kernel;
 use crate::option_cell::OptionCell;
 
@@ -32,8 +32,8 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
     // Generate default texture image
     let img = unsafe {
         raylib::ffi::GenImageColor(
-            driver::draw::FRAMEBUFFER_WIDTH as i32,
-            driver::draw::FRAMEBUFFER_HEIGHT as i32,
+            driver::screen::FRAMEBUFFER_WIDTH as i32,
+            driver::screen::FRAMEBUFFER_HEIGHT as i32,
             Color::RED,
         )
     };
@@ -49,7 +49,7 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
     )
     .expect("Could not create application directory.");
 
-    let drawstate = Box::new(DrawState::new(texture));
+    let drawstate = Box::new(ScreenState::new(texture));
     let inputstate = Box::new(InputState::new());
     let audiostate = Box::new(AudioState::new());
 
@@ -68,8 +68,8 @@ async fn main() -> wasmtime::Result<()> {
 
     let (mut rl, thread) = raylib::init()
         .size(
-            driver::draw::FRAMEBUFFER_WIDTH as i32 * 2,
-            driver::draw::FRAMEBUFFER_HEIGHT as i32 * 2,
+            driver::screen::FRAMEBUFFER_WIDTH as i32 * 2,
+            driver::screen::FRAMEBUFFER_HEIGHT as i32 * 2,
         )
         .vsync()
         .title("WasmOS Test")

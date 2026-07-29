@@ -1,3 +1,8 @@
+pub const FILE_WRITE: u8 = 0b1;
+pub const FILE_APPEND: u8 = 0b10;
+pub const FILE_CREATE: u8 = 0b100;
+pub const FILE_TRUNCATE: u8 = 0b1000;
+
 #[link(wasm_import_module = "env")]
 unsafe extern "C" {
     fn extern_debug_print(str_ptr: *const u8, str_len: i32) -> i32;

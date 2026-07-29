@@ -23,16 +23,14 @@ fn byte_to_rgb(byte: u8) -> (u8, u8, u8) {
     (r.saturating_mul(37), g.saturating_mul(37), b * 85)
 }
 
-pub struct DrawState {
+pub struct ScreenState {
     pub framebuffer_texture: Texture2D,
-    driver_id: usize,
 }
 
-impl DrawState {
+impl ScreenState {
     pub fn new(texture: Texture2D) -> Self {
         Self {
             framebuffer_texture: texture,
-            driver_id: 0,
         }
     }
 
@@ -84,22 +82,13 @@ impl DrawState {
     }
 }
 
-impl Driver for DrawState {
+impl Driver for ScreenState {
     fn name(&self) -> &'static str {
-        "driver_draw"
+        "driver_screen"
     }
 
-    fn accept_id(&mut self, id: usize) {
-        self.driver_id = id;
-    }
-
-    fn get_id(&self) -> usize {
-        self.driver_id
-    }
-
-    fn register_functions(&self, linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+    fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()> {
         let name = self.name();
-        let id = self.driver_id;
 
         linker.func_wrap(
             name,
@@ -117,6 +106,7 @@ impl Driver for DrawState {
         )?;
 
         // TODO: add drawing functions like square and circle
+        // Actually, this should be part of its own driver
 
         Ok(())
     }

@@ -3,6 +3,7 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
@@ -39,7 +40,6 @@ pub struct Process {
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
 
-#[allow(dead_code)]
 impl Process {
     pub fn new(
         parent_pid: Pid,
@@ -90,12 +90,6 @@ impl Process {
 
     // Files
 
-    pub fn read_whole_file(&self, path: impl AsRef<Path>) -> Option<Vec<u8>> {
-        let mut cwd = self.current_working_directory.clone();
-        cwd.push(path);
-        unsafe { KERNEL.read_file(&cwd).ok() }
-    }
-
     // Gets the absolute path relative to this process' current working directory.
     fn get_absolute_path(&self, path: &Path) -> PathBuf {
         if let Ok(abs_path) = path.strip_prefix("/") {
@@ -104,6 +98,54 @@ impl Process {
             let mut relative_path = self.current_working_directory.clone();
             relative_path.push(path);
             relative_path
+        }
+    }
+
+    pub fn is_directory(&self, path: impl AsRef<Path>) -> bool {
+        unsafe { KERNEL.is_directory(self.get_absolute_path(path.as_ref())) }
+    }
+
+    pub fn is_file(&self, path: impl AsRef<Path>) -> bool {
+        unsafe { KERNEL.is_file(self.get_absolute_path(path.as_ref())) }
+    }
+
+    pub fn file_exists(&self, path: impl AsRef<Path>) -> bool {
+        unsafe { KERNEL.file_exists(self.get_absolute_path(path.as_ref())) }
+    }
+
+    pub fn file_size(&self, path: impl AsRef<Path>) -> i32 {
+        unsafe {
+            match KERNEL.file_size(path) {
+                Ok(size) => size as i32,
+                Err(_) => -1,
+            }
+        }
+    }
+
+    pub fn file_created(&self, path: impl AsRef<Path>) -> i64 {
+        unsafe {
+            KERNEL
+                .file_created(path)
+                .map(time_since_unix_epoch)
+                .unwrap_or(-1)
+        }
+    }
+
+    pub fn file_accessed(&self, path: impl AsRef<Path>) -> i64 {
+        unsafe {
+            KERNEL
+                .file_accessed(path)
+                .map(time_since_unix_epoch)
+                .unwrap_or(-1)
+        }
+    }
+
+    pub fn file_modified(&self, path: impl AsRef<Path>) -> i64 {
+        unsafe {
+            KERNEL
+                .file_modified(path)
+                .map(time_since_unix_epoch)
+                .unwrap_or(-1)
         }
     }
 
@@ -122,7 +164,6 @@ impl Process {
 
     fn set_current_directory(&mut self, path: &Path) -> i32 {
         unsafe {
-            // TODO: do we even need this? Surely the relative path should resolve to a file.
             let Ok(path) = KERNEL.get_absolute_path(path) else {
                 return -2;
             };
@@ -219,6 +260,7 @@ impl Process {
         self.driver_states.insert(driver_id, state);
     }
 
+    #[allow(unused)]
     pub fn get_driver_state<T: Any + Send>(&self, driver_id: usize) -> Option<&T> {
         self.driver_states
             .get(&driver_id)
@@ -230,4 +272,11 @@ impl Process {
             .get_mut(&driver_id)
             .and_then(|state| state.downcast_mut::<T>())
     }
+}
+
+fn time_since_unix_epoch(time: cap_std::time::SystemTime) -> i64 {
+    time.into_std()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(-1)
 }
