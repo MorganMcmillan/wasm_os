@@ -10,14 +10,12 @@ use std::ptr::NonNull;
 use std::time::Duration;
 
 use cap_std::ambient_authority;
+use cap_std::fs::OpenOptions;
 use raylib::RaylibHandle;
 use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU32;
-use tokio::io::stderr;
-use tokio::io::stdin;
-use tokio::io::stdout;
 use tokio::task;
 use wasmtime::Caller;
 use wasmtime::Config;
@@ -205,6 +203,37 @@ impl Kernel {
 
     pub fn get_absolute_path(&self, path: impl AsRef<Path>) -> io::Result<PathBuf> {
         self.ambient_dir.canonicalize(path)
+    }
+
+    pub fn open_async_file(
+        &self,
+        path: impl AsRef<Path>,
+        mode: u8,
+    ) -> Result<tokio::fs::File, io::Error> {
+        // TODO: move these into the wasm_os system library
+        const OPTION_WRITE: u8 = 0b1;
+        const OPTION_APPEND: u8 = 0b10;
+        const OPTION_CREATE: u8 = 0b100;
+        const OPTION_TRUNCATE: u8 = 0b1000;
+
+        let mut options = OpenOptions::new();
+        if mode & OPTION_WRITE != 0 {
+            options.write(true);
+        } else {
+            options.read(true);
+        }
+        if mode & OPTION_APPEND != 0 {
+            options.append(true);
+        }
+        if mode & OPTION_CREATE != 0 {
+            options.create(true);
+        }
+        if mode & OPTION_TRUNCATE != 0 {
+            options.truncate(true);
+        }
+
+        let file = self.ambient_dir.open_with(path, &options)?;
+        Ok(tokio::fs::File::from_std(file.into_std()))
     }
 
     pub fn read_file(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, CreateProcessError> {

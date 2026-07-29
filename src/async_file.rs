@@ -1,4 +1,4 @@
-use std::io::SeekFrom;
+use std::io::{ErrorKind, SeekFrom};
 
 use tokio::{
     fs::File,
@@ -9,7 +9,6 @@ pub enum FileError {
     CannotRead,
     CannotWrite,
     CannotSeek,
-    FileClosed,
     InvalidSeekOption,
     Other,
 }
@@ -25,6 +24,14 @@ pub enum AsyncFile {
 
 unsafe impl Send for AsyncFile {}
 unsafe impl Sync for AsyncFile {}
+
+fn get_error(error: std::io::Error) -> FileError {
+    match error.kind() {
+        ErrorKind::ReadOnlyFilesystem => FileError::CannotWrite,
+        ErrorKind::NotSeekable => FileError::CannotSeek,
+        _ => FileError::Other,
+    }
+}
 
 impl AsyncFile {
     pub fn stdin() -> Self {
@@ -42,8 +49,8 @@ impl AsyncFile {
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError> {
         match self {
             Self::Null => Ok(0),
-            Self::Stdin(stdin) => stdin.read(buf).await.map_err(|_| FileError::Other),
-            Self::File(file) => file.read(buf).await.map_err(|_| FileError::Other),
+            Self::Stdin(stdin) => stdin.read(buf).await.map_err(get_error),
+            Self::File(file) => file.read(buf).await.map_err(get_error),
             _ => Err(FileError::CannotRead),
         }
     }
@@ -51,8 +58,8 @@ impl AsyncFile {
     pub async fn write(&mut self, src: &[u8]) -> Result<usize, FileError> {
         match self {
             Self::Null => Ok(src.len()),
-            Self::Stdout(stdout) => stdout.write(src).await.map_err(|_| FileError::Other),
-            Self::Stderr(stderr) => stderr.write(src).await.map_err(|_| FileError::Other),
+            Self::Stdout(stdout) => stdout.write(src).await.map_err(get_error),
+            Self::Stderr(stderr) => stderr.write(src).await.map_err(get_error),
             _ => Err(FileError::CannotWrite),
         }
     }
@@ -67,7 +74,7 @@ impl AsyncFile {
 
         match self {
             Self::Null => Ok(0),
-            Self::File(file) => file.seek(seek_from).await.map_err(|_| FileError::Other),
+            Self::File(file) => file.seek(seek_from).await.map_err(get_error),
             _ => Err(FileError::CannotSeek),
         }
     }

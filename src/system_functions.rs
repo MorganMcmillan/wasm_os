@@ -7,6 +7,7 @@ use wasmtime::Linker;
 
 use crate::KERNEL;
 use crate::async_file::AsyncFile;
+use crate::id::Id;
 use crate::kernel::{Pid, ProcessContext};
 use crate::process::Process;
 
@@ -16,6 +17,20 @@ pub fn get_memory(ctx: *const ProcessContext, mem_ptr: i32, mem_len: i32) -> Res
         let process = KERNEL.get_process_mut((*ctx).data().pid).unwrap();
 
         let mem = process.get_memory(mem_ptr as usize, mem_len as usize);
+        Ok(mem)
+    }
+}
+
+#[allow(mismatched_lifetime_syntaxes)]
+pub fn get_memory_mut(
+    ctx: *const ProcessContext,
+    mem_ptr: i32,
+    mem_len: i32,
+) -> Result<&mut [u8], i32> {
+    unsafe {
+        let process = KERNEL.get_process_mut((*ctx).data().pid).unwrap();
+
+        let mem = process.get_memory_mut(mem_ptr as usize, mem_len as usize);
         Ok(mem)
     }
 }
@@ -276,6 +291,98 @@ pub fn load_system_functions(linker: &mut Linker<Process>) -> wasmtime::Result<(
     )?;
 
     // Filesystem
+
+    linker.func_wrap(
+        "env",
+        "open_file",
+        |mut ctx: ProcessContext, path_ptr: i32, path_len: i32, mode: i32| {
+            let path = match get_str(&ctx, path_ptr, path_len) {
+                Ok(p) => p,
+                Err(_) => return 0,
+            };
+
+            ctx.data_mut().open_file(path, mode).as_i32()
+        },
+    )?;
+
+    linker.func_wrap_async(
+        "env",
+        "read_file",
+        |mut ctx: ProcessContext, (fd, buf_ptr, buf_len): (i32, i32, i32)| {
+            Box::new(async move {
+                let buf = match get_memory_mut(&ctx, buf_ptr, buf_len) {
+                    Ok(b) => b,
+                    Err(e) => return e,
+                };
+
+                match ctx
+                    .data_mut()
+                    .get_file(Id::from_i32(fd))
+                    .unwrap()
+                    .read(buf)
+                    .await
+                {
+                    Ok(bytes) => bytes as i32,
+                    Err(_) => -1,
+                }
+            })
+        },
+    )?;
+
+    linker.func_wrap_async(
+        "env",
+        "write_file",
+        |mut ctx: ProcessContext, (fd, src_ptr, src_len): (i32, i32, i32)| {
+            Box::new(async move {
+                let src = match get_memory(&ctx, src_ptr, src_len) {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+
+                match ctx
+                    .data_mut()
+                    .get_file(Id::from_i32(fd))
+                    .unwrap()
+                    .write(src)
+                    .await
+                {
+                    Ok(bytes) => bytes as i32,
+                    Err(_) => -1,
+                }
+            })
+        },
+    )?;
+
+    linker.func_wrap_async(
+        "env",
+        "seek",
+        |mut ctx: ProcessContext, (fd, offset, from): (i32, i32, i32)| {
+            Box::new(async move {
+                match ctx
+                    .data_mut()
+                    .get_file(Id::from_i32(fd))
+                    .unwrap()
+                    .seek(offset as i64, from as u8)
+                    .await
+                {
+                    Ok(new_offset) => new_offset as i32,
+                    Err(_) => -1,
+                }
+            })
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "close_file`",
+        |mut ctx: ProcessContext, fd: i32| -> i32 {
+            if ctx.data_mut().open_files.delete_id(Id::from_i32(fd)) {
+                0
+            } else {
+                -1
+            }
+        },
+    )?;
 
     linker.func_wrap(
         "env",

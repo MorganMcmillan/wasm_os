@@ -119,6 +119,11 @@ impl WasmProcess {
         &memory[address..(address + len)]
     }
 
+    pub fn get_memory_mut(&mut self, address: usize, len: usize) -> &mut [u8] {
+        let memory = get_memory_slice_mut(&self.instance, &mut self.store);
+        &mut memory[address..(address + len)]
+    }
+
     /// Sets a slice of memory. The length of the slice is given by the lenght of the value
     pub fn set_memory(&mut self, address: usize, value: &[u8]) {
         let memory = get_memory_slice_mut(&self.instance, &mut self.store);

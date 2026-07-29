@@ -116,7 +116,22 @@ impl Process {
         self.set_current_directory(&self.get_absolute_path(path.as_ref()))
     }
 
-    // TODO: add `open_file`
+    pub fn open_file(&mut self, path: impl AsRef<Path>, mode: i32) -> Id {
+        let path = self.get_absolute_path(path.as_ref());
+
+        let file = unsafe {
+            match KERNEL.open_async_file(&path, mode as u8) {
+                Ok(f) => f,
+                Err(_) => return Id::default(),
+            }
+        };
+
+        self.open_files.new_id(AsyncFile::File(file))
+    }
+
+    pub fn get_file(&mut self, fd: Id) -> Option<&mut AsyncFile> {
+        self.open_files.data_mut(fd)
+    }
 
     // Events
 
