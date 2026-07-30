@@ -15,18 +15,18 @@ use crate::system_functions::load_system_functions;
 use tokio::task::yield_now;
 use wasmtime::{Engine, Instance, Memory, Module, ModuleExport, Store};
 
-pub type ProcessStore = Store<Process>;
+pub type ProcessStore<T> = Store<Process<T>>;
 
 #[allow(invalid_reference_casting, clippy::transmute_ptr_to_ref)]
-fn get_wasm_memory(
+fn get_wasm_memory<T>(
     instance: &Instance,
-    store_ptr: *mut ProcessStore,
+    store_ptr: *mut ProcessStore<T>,
     mem_index: &ModuleExport,
 ) -> Memory {
     unsafe {
         instance
             .get_module_export(
-                transmute::<*mut ProcessStore, &mut ProcessStore>(store_ptr),
+                transmute::<*mut ProcessStore<T>, &mut ProcessStore<T>>(store_ptr),
                 mem_index,
             )
             .unwrap()
@@ -38,28 +38,28 @@ fn get_wasm_memory(
 /// Returns a view of a WASM memory.
 /// Note: this function exists entirely because I was having borrow errors.
 #[allow(invalid_reference_casting, clippy::transmute_ptr_to_ref)]
-fn get_memory_slice<'a>(
+fn get_memory_slice<'a, T>(
     instance: &'a Instance,
-    store: &'a ProcessStore,
+    store: &'a ProcessStore<T>,
     mem_index: &ModuleExport,
 ) -> &'a [u8] {
-    let store_ptr = store as *const ProcessStore as *mut ProcessStore;
+    let store_ptr = store as *const ProcessStore<T> as *mut ProcessStore<T>;
     get_wasm_memory(instance, store_ptr, mem_index).data(store)
 }
 
 /// Returns a mutable view of a WASM memory.
 /// Note: this function exists entirely because I was having borrow errors.
-fn get_memory_slice_mut<'a>(
+fn get_memory_slice_mut<'a, T>(
     instance: &'a Instance,
-    store: &'a mut ProcessStore,
+    store: &'a mut ProcessStore<T>,
     mem_index: &ModuleExport,
 ) -> &'a mut [u8] {
     get_wasm_memory(instance, store, mem_index).data_mut(store)
 }
 /// Represents the actual running process, including its memory and functions
-pub struct WasmProcess {
+pub struct WasmProcess<T: 'static> {
     pub instance: wasmtime::Instance,
-    pub store: ProcessStore,
+    pub store: ProcessStore<T>,
 }
 
 // Returns the names of imported drivers and libraries.
@@ -71,10 +71,10 @@ fn get_imported_modules(module: &Module) -> (Vec<&str>, Vec<&str>) {
 }
 
 // Dynamically loads the wasm library file
-fn load_libraries(
-    kernel: &'static MutCell<Kernel>,
-    linker: &mut ProcessLinker,
-    mut store: &mut ProcessStore,
+fn load_libraries<T>(
+    kernel: &'static MutCell<Kernel<T>>,
+    linker: &mut ProcessLinker<T>,
+    mut store: &mut ProcessStore<T>,
     engine: &Engine,
     libraries: &[&str],
 ) -> wasmtime::Result<()> {
@@ -93,12 +93,12 @@ fn load_libraries(
     Ok(())
 }
 
-impl WasmProcess {
+impl<T> WasmProcess<T> {
     pub async fn new(
-        kernel: &'static MutCell<Kernel>,
+        kernel: &'static MutCell<Kernel<T>>,
         binary: Vec<u8>,
         engine: &Engine,
-        mut process: Process,
+        mut process: Process<T>,
     ) -> wasmtime::Result<Self> {
         // Modules are compiled from text or binary
         let module = Module::new(engine, binary)?;

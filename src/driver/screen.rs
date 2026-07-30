@@ -1,12 +1,12 @@
 use crate::{
-    driver::Driver,
+    driver::{Driver, RaylibUserdata},
     kernel::{Kernel, ProcessContext, ProcessLinker},
     mut_cell::MutCell,
     system_functions,
 };
 use raylib::{
     drawing::{RaylibDraw, RaylibDrawHandle},
-    ffi::{Color, Vector2},
+    ffi::{Color, KeyboardKey, Vector2},
     math::Rectangle,
     texture::{RaylibTexture2D, Texture2D},
 };
@@ -82,18 +82,22 @@ impl ScreenState {
     }
 }
 
-impl Driver for ScreenState {
+impl Driver<RaylibUserdata> for ScreenState {
     fn name(&self) -> &'static str {
         "driver_screen"
     }
 
-    fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()> {
+    fn register_functions(
+        &self,
+        linker: &mut ProcessLinker<RaylibUserdata>,
+        id: usize,
+    ) -> wasmtime::Result<()> {
         let name = self.name();
 
         linker.func_wrap(
             name,
             "upload_framebuffer",
-            move |ctx: ProcessContext, framebuffer: i32| {
+            move |ctx: ProcessContext<RaylibUserdata>, framebuffer: i32| {
                 let drawstate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
                 drawstate.upload_framebuffer(
                     system_functions::get_memory(&ctx, framebuffer, FRAMEBUFFER_SIZE as i32)
@@ -108,10 +112,13 @@ impl Driver for ScreenState {
 
     fn update(
         &mut self,
-        _kernel: &'static MutCell<Kernel>,
-        rl: &mut raylib::RaylibHandle,
-        thread: &raylib::RaylibThread,
+        _kernel: &'static MutCell<Kernel<RaylibUserdata>>,
+        (rl, thread): &mut RaylibUserdata,
     ) {
+        if rl.is_key_pressed(KeyboardKey::KEY_F11) {
+            rl.toggle_fullscreen();
+        }
+
         let screen_width = rl.get_screen_width();
         let screen_height = rl.get_screen_height();
 

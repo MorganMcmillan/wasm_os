@@ -1,9 +1,9 @@
 // Note: this driver is actually intended for all Wasm-os distributions, Provided they use 8-bit
 // pixel graphics
 
-use crate::{driver::Driver, kernel::ProcessLinker};
+use crate::kernel::ProcessLinker;
 
-pub fn load_graphics_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Result<()> {
     todo!()
 }
 

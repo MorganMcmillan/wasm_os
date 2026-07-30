@@ -1,8 +1,8 @@
-use raylib::{RaylibHandle, ffi::MouseButton};
+use raylib::ffi::MouseButton;
 
 use crate::{
     byte_builder::ByteBuilder,
-    driver::{Driver, screen},
+    driver::{Driver, RaylibUserdata, screen},
     kernel::{Kernel, ProcessContext, ProcessLinker},
     mut_cell::MutCell,
 };
@@ -12,7 +12,13 @@ fn normalize_coordinate(x: i32, length: i32, normalized_length: i32) -> u16 {
     ((x * normalized_length) / length) as u16
 }
 
-fn send_mouse_event(kernel: &MutCell<Kernel>, name: &str, mx: u16, my: u16, button: u8) {
+fn send_mouse_event(
+    kernel: &MutCell<Kernel<RaylibUserdata>>,
+    name: &str,
+    mx: u16,
+    my: u16,
+    button: u8,
+) {
     kernel
         .borrow_static()
         .send_event_to_root(name, &ByteBuilder::new().u16(mx).u16(my).u8(button).build());
@@ -29,32 +35,43 @@ impl InputState {
     }
 }
 
-impl Driver for InputState {
+impl Driver<RaylibUserdata> for InputState {
     fn name(&self) -> &'static str {
         "driver_input"
     }
 
-    fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()> {
+    fn register_functions(
+        &self,
+        linker: &mut ProcessLinker<RaylibUserdata>,
+        id: usize,
+    ) -> wasmtime::Result<()> {
         let name = self.name();
 
-        linker.func_wrap(name, "get_mouse_x", move |ctx: ProcessContext| {
-            let mousestate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
-            mousestate.x as i32
-        })?;
+        linker.func_wrap(
+            name,
+            "get_mouse_x",
+            move |ctx: ProcessContext<RaylibUserdata>| {
+                let mousestate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
+                mousestate.x as i32
+            },
+        )?;
 
-        linker.func_wrap(name, "get_mouse_y", move |ctx: ProcessContext| {
-            let mousestate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
-            mousestate.y as i32
-        })?;
+        linker.func_wrap(
+            name,
+            "get_mouse_y",
+            move |ctx: ProcessContext<RaylibUserdata>| {
+                let mousestate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
+                mousestate.y as i32
+            },
+        )?;
 
         Ok(())
     }
 
     fn update(
         &mut self,
-        kernel: &MutCell<Kernel>,
-        rl: &mut RaylibHandle,
-        _thread: &raylib::RaylibThread,
+        kernel: &MutCell<Kernel<RaylibUserdata>>,
+        (rl, _thread): &mut RaylibUserdata,
     ) {
         let screen_width = rl.get_screen_width();
         let screen_height = rl.get_screen_height();

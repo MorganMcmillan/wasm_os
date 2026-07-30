@@ -1,7 +1,7 @@
 mod sample_queue;
 
 use crate::{
-    driver::{Driver, audio::sample_queue::WeakWrapper},
+    driver::{Driver, RaylibUserdata, audio::sample_queue::WeakWrapper},
     kernel::{Kernel, ProcessContext, ProcessLinker},
     mut_cell::MutCell,
     system_functions,
@@ -25,16 +25,15 @@ impl AudioState {
     }
 }
 
-impl Driver for AudioState {
+impl Driver<RaylibUserdata> for AudioState {
     fn name(&self) -> &'static str {
         "driver_audio"
     }
 
     fn update(
         &mut self,
-        _kernel: &'static MutCell<Kernel>,
-        _rl: &mut raylib::RaylibHandle,
-        _thread: &raylib::RaylibThread,
+        _kernel: &'static MutCell<Kernel<RaylibUserdata>>,
+        _: &mut RaylibUserdata,
     ) {
     }
 
@@ -44,13 +43,17 @@ impl Driver for AudioState {
         ))))
     }
 
-    fn register_functions(&self, linker: &mut ProcessLinker, id: usize) -> wasmtime::Result<()> {
+    fn register_functions(
+        &self,
+        linker: &mut ProcessLinker<RaylibUserdata>,
+        id: usize,
+    ) -> wasmtime::Result<()> {
         let name = self.name();
 
         linker.func_wrap(
             name,
             "play_sound",
-            move |mut ctx: ProcessContext,
+            move |mut ctx: ProcessContext<RaylibUserdata>,
                   sound_ptr: i32,
                   sound_len: i32,
                   left_volume: i32,

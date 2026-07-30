@@ -3,6 +3,7 @@
 use raylib::prelude::*;
 use tokio::task::{spawn_local, yield_now};
 
+use crate::driver::RaylibUserdata;
 use crate::driver::audio::AudioState;
 use crate::driver::input::InputState;
 use crate::driver::screen::ScreenState;
@@ -26,7 +27,10 @@ const APP_NAME: &str = "wasm_os";
 // const FRAMERATE: u32 = 120;
 const DISABLE_LOGGING: bool = true;
 
-async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime::Result<Kernel> {
+async fn create_kernel(
+    rl: &mut RaylibHandle,
+    thread: &RaylibThread,
+) -> wasmtime::Result<Kernel<RaylibUserdata>> {
     // Generate default texture image
     let img = unsafe {
         raylib::ffi::GenImageColor(
@@ -47,13 +51,13 @@ async fn create_kernel(rl: &mut RaylibHandle, thread: &RaylibThread) -> wasmtime
     )
     .expect("Could not create application directory.");
 
-    let drawstate = Box::new(ScreenState::new(texture));
+    let screenstate = Box::new(ScreenState::new(texture));
     let inputstate = Box::new(InputState::new());
     let audiostate = Box::new(AudioState::new());
 
     Ok(Kernel::new(
         &root_dir,
-        vec![drawstate, inputstate, audiostate],
+        vec![screenstate, inputstate, audiostate],
     ))
 }
 
@@ -81,16 +85,22 @@ async fn main() -> wasmtime::Result<()> {
     let kernel_cell = MutCell::new(create_kernel(&mut rl, &thread).await?);
     let kernel = kernel_cell.as_static_ref();
 
+    let rl_mut = MutCell::new(rl);
+    let thread_mut = MutCell::new(thread);
+
     Kernel::run_boot(kernel).await;
 
     let join_handle = spawn_local(async move {
-        while !rl.window_should_close() {
+        while !rl_mut.borrow_static().window_should_close() {
             if kernel.root_exited() {
                 println!("Root exited, shutting down.");
                 break;
             }
 
-            Kernel::update(kernel, &mut rl, &thread);
+            Kernel::update(
+                kernel,
+                &mut (rl_mut.borrow_static(), thread_mut.borrow_static()),
+            );
 
             yield_now().await;
         }

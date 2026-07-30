@@ -17,8 +17,8 @@ use crate::kernel::{Kernel, Pid};
 use crate::mut_cell::MutCell;
 
 /// A process represents the state of a running Webassembly process.
-pub struct Process {
-    pub kernel: &'static MutCell<Kernel>,
+pub struct Process<T: 'static> {
+    pub kernel: &'static MutCell<Kernel<T>>,
     /// This process' id
     pub pid: Pid,
     /// The parent process' id
@@ -46,9 +46,9 @@ pub struct Process {
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
 
-impl Process {
+impl<T> Process<T> {
     pub fn new(
-        kernel: &'static MutCell<Kernel>,
+        kernel: &'static MutCell<Kernel<T>>,
         parent_pid: Pid,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
@@ -261,16 +261,16 @@ impl Process {
     }
 
     #[allow(unused)]
-    pub fn get_driver_state<T: Any + Send>(&self, driver_id: usize) -> Option<&T> {
+    pub fn get_driver_state<D: Any + Send>(&self, driver_id: usize) -> Option<&D> {
         self.driver_states
             .get(&driver_id)
-            .and_then(|state| state.downcast_ref::<T>())
+            .and_then(|state| state.downcast_ref::<D>())
     }
 
-    pub fn get_driver_state_mut<T: Any + Send>(&mut self, driver_id: usize) -> Option<&mut T> {
+    pub fn get_driver_state_mut<D: Any + Send>(&mut self, driver_id: usize) -> Option<&mut D> {
         self.driver_states
             .get_mut(&driver_id)
-            .and_then(|state| state.downcast_mut::<T>())
+            .and_then(|state| state.downcast_mut::<D>())
     }
 }
 

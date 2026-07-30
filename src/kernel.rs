@@ -13,8 +13,6 @@ use cap_std::ambient_authority;
 use cap_std::fs::MetadataExt;
 use cap_std::fs::OpenOptions;
 use cap_std::time::SystemTime;
-use raylib::RaylibHandle;
-use raylib::ffi::KeyboardKey;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use string_interner::symbol::SymbolU32;
@@ -33,8 +31,8 @@ use crate::process::Process;
 use crate::wasm_process::WasmProcess;
 
 pub type Pid = Id;
-pub type ProcessLinker = wasmtime::Linker<Process>;
-pub type ProcessContext<'a> = Caller<'a, Process>;
+pub type ProcessLinker<T> = wasmtime::Linker<Process<T>>;
+pub type ProcessContext<'a, T> = Caller<'a, Process<T>>;
 
 pub const ROOT_PID: Pid = Id::new(1);
 
@@ -46,11 +44,11 @@ pub enum CreateProcessError {
     Other,
 }
 
-pub struct Kernel {
+pub struct Kernel<T: 'static> {
     engine: Engine,
-    pub drivers: Vec<Box<dyn Driver>>,
+    pub drivers: Vec<Box<dyn Driver<T>>>,
     // A sparse map of Pids to processes
-    pub processes: IdStore<WasmProcess>,
+    pub processes: IdStore<WasmProcess<T>>,
     // A map of process names to Pids
     process_names: HashMap<Box<str>, Pid>,
     current_event: Option<NonNull<Event>>,
@@ -59,8 +57,8 @@ pub struct Kernel {
     ambient_dir: cap_std::fs::Dir,
 }
 
-unsafe impl Send for Kernel {}
-unsafe impl Sync for Kernel {}
+unsafe impl<T> Send for Kernel<T> {}
+unsafe impl<T> Sync for Kernel<T> {}
 
 const BIOS_BOOT_PROCESS: &str = "bios/boot.wasm";
 const ROM_BOOT_PROCESS: &str = "rom/boot.wasm";
@@ -72,8 +70,8 @@ fn create_system_folders(root_dir: &cap_std::fs::Dir) {
     let _ = root_dir.create_dir("lib");
 }
 
-impl Kernel {
-    pub fn new(root_dir: &Path, drivers: Vec<Box<dyn Driver>>) -> Self {
+impl<T: 'static> Kernel<T> {
+    pub fn new(root_dir: &Path, drivers: Vec<Box<dyn Driver<T>>>) -> Self {
         let mut config = Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
         config.epoch_interruption(true);
@@ -113,7 +111,7 @@ impl Kernel {
         !self.processes.id_is_valid(ROOT_PID)
     }
 
-    pub async fn run_boot(kernel: &'static MutCell<Kernel>) {
+    pub async fn run_boot(kernel: &'static MutCell<Kernel<T>>) {
         let root_pid = Kernel::create_boot_process(kernel).await;
         let root = kernel.borrow_static().get_process_mut(root_pid).unwrap();
         let join_handle = task::spawn(root.run());
@@ -127,9 +125,9 @@ impl Kernel {
             .set_join_handle(join_handle);
     }
 
-    async fn create_boot_process(kernel: &'static MutCell<Kernel>) -> Pid {
-        async fn create_boot_process(
-            kernel: &'static MutCell<Kernel>,
+    async fn create_boot_process(kernel: &'static MutCell<Kernel<T>>) -> Pid {
+        async fn create_boot_process<T>(
+            kernel: &'static MutCell<Kernel<T>>,
             path: &str,
         ) -> Result<Pid, CreateProcessError> {
             Kernel::create_process(
@@ -165,7 +163,7 @@ impl Kernel {
     }
 
     pub async fn run_process(
-        kernel: &'static MutCell<Kernel>,
+        kernel: &'static MutCell<Kernel<T>>,
         path: &str,
         parent: Pid,
         stdin: AsyncFile,
@@ -294,7 +292,7 @@ impl Kernel {
     }
 
     pub async fn create_process(
-        kernel: &'static MutCell<Kernel>,
+        kernel: &'static MutCell<Kernel<T>>,
         path: &str,
         parent: Pid,
         stdin: AsyncFile,
@@ -368,31 +366,23 @@ impl Kernel {
         self.processes.delete_id(pid);
     }
 
-    pub fn get_process(&self, pid: Pid) -> Option<&WasmProcess> {
+    pub fn get_process(&self, pid: Pid) -> Option<&WasmProcess<T>> {
         self.processes.data(pid)
     }
 
-    pub fn get_process_mut(&mut self, pid: Pid) -> Option<&mut WasmProcess> {
+    pub fn get_process_mut(&mut self, pid: Pid) -> Option<&mut WasmProcess<T>> {
         self.processes.data_mut(pid)
     }
 
-    pub fn update(
-        kernel: &'static MutCell<Kernel>,
-        rl: &mut RaylibHandle,
-        thread: &raylib::RaylibThread,
-    ) {
-        if rl.is_key_pressed(KeyboardKey::KEY_F11) {
-            rl.toggle_fullscreen();
-        }
-
+    pub fn update(kernel: &'static MutCell<Self>, userdata: &mut T) {
         for driver in kernel.borrow_static().drivers.iter_mut() {
-            driver.update(kernel, rl, thread);
+            driver.update(kernel, userdata);
         }
     }
 
     // Drivers
 
-    pub fn get_driver_by_name(&mut self, name: &str) -> Option<(usize, &mut dyn Driver)> {
+    pub fn get_driver_by_name(&mut self, name: &str) -> Option<(usize, &mut dyn Driver<T>)> {
         for (id, driver) in self.drivers.iter_mut().enumerate() {
             if driver.name() == name {
                 return Some((id, driver.as_mut()));
@@ -404,7 +394,7 @@ impl Kernel {
     // Loads each driver's functions.
     pub fn load_driver_functions(
         &mut self,
-        linker: &mut ProcessLinker,
+        linker: &mut ProcessLinker<T>,
         imported_modules: &[&str],
     ) -> wasmtime::Result<()> {
         for driver_name in imported_modules.iter().copied() {
@@ -416,7 +406,7 @@ impl Kernel {
         Ok(())
     }
 
-    pub fn get_driver<T: Any>(&mut self, id: usize) -> &mut T {
+    pub fn get_driver<D: Any>(&mut self, id: usize) -> &mut D {
         self.drivers[id].as_any().downcast_mut().unwrap()
     }
 
@@ -512,7 +502,7 @@ mod tests {
     #[test]
     fn move_file_works() -> io::Result<()> {
         let root_dir = "test_dir";
-        let kernel = Kernel::new(root_dir.as_ref(), vec![]);
+        let kernel: Kernel<()> = Kernel::new(root_dir.as_ref(), vec![]);
 
         let _ = kernel.create_directory("foo");
         kernel.move_file("foo", "bar").unwrap();
@@ -526,7 +516,7 @@ mod tests {
     #[test]
     fn copy_file_works() -> io::Result<()> {
         let root_dir = "test_dir";
-        let kernel = Kernel::new(root_dir.as_ref(), vec![]);
+        let kernel: Kernel<()> = Kernel::new(root_dir.as_ref(), vec![]);
 
         kernel.create_file("foo").unwrap();
         kernel.copy_file("foo", "bar").unwrap();
