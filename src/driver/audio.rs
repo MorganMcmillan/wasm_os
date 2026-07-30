@@ -1,14 +1,17 @@
 mod sample_queue;
 
 use crate::{
-    driver::Driver,
+    driver::{Driver, audio::sample_queue::WeakWrapper},
     kernel::{Kernel, ProcessContext, ProcessLinker},
     mut_cell::MutCell,
     system_functions,
 };
 use rodio::{MixerDeviceSink, Player};
 use sample_queue::SampleQueue;
-use std::any::Any;
+use std::{
+    any::Any,
+    sync::{Arc, Mutex},
+};
 
 pub struct AudioState {
     handle: MixerDeviceSink,
@@ -79,13 +82,13 @@ impl Driver for AudioState {
 #[allow(unused)]
 pub struct ProcessAudioState {
     player: Player,
-    sample_buffer: MutCell<SampleQueue>,
+    sample_buffer: Arc<Mutex<SampleQueue>>,
 }
 
 impl ProcessAudioState {
     pub fn new(player: Player) -> Self {
-        let sample_buffer = MutCell::new(SampleQueue::new());
-        player.append(sample_buffer.borrow_static());
+        let sample_buffer = SampleQueue::new_arc();
+        player.append(WeakWrapper::new(&sample_buffer));
         Self {
             player,
             sample_buffer,
@@ -93,9 +96,13 @@ impl ProcessAudioState {
     }
 
     pub fn play(&mut self, samples: &[u8], left_volume: u8, right_volue: u8) -> usize {
+        let Ok(mut sample_buffer) = self.sample_buffer.lock() else {
+            return 0;
+        };
+
         for (i, &sample) in samples.iter().enumerate() {
             let (left, right) = split_sample(sample, left_volume, right_volue);
-            if !self.sample_buffer.borrow_static().push_sample(left, right) {
+            if !sample_buffer.push_sample(left, right) {
                 return i;
             }
         }

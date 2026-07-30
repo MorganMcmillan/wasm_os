@@ -1,17 +1,17 @@
-use std::{num::NonZeroU32, ops::Deref, sync::Mutex};
+use std::{
+    num::NonZeroU32,
+    sync::{Arc, Mutex, Weak},
+};
 
 use rodio::nz;
-
-use crate::mut_cell::MutCell;
 
 pub const SAMPLE_RATE: u32 = 44100;
 const MAX_SAMPLES: usize = 32768;
 
 pub struct SampleQueue {
     buffer: [u8; MAX_SAMPLES],
-    tail: Mutex<u16>,
-    length: Mutex<u16>,
-    process_exited: bool,
+    tail: u16,
+    length: u16,
     // A sample that was possibly skipped while being added to the queue
     skipped_right: Option<u8>,
 }
@@ -20,26 +20,30 @@ impl SampleQueue {
     pub fn new() -> Self {
         Self {
             buffer: [0; MAX_SAMPLES],
-            tail: Mutex::new(0),
-            length: Mutex::new(0),
-            process_exited: false,
+            tail: 0,
+            length: 0,
             skipped_right: None,
         }
     }
 
+    pub fn new_arc() -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self::new()))
+    }
+
     fn push(&mut self, sample: u8) -> bool {
-        let mut length = self.length.lock().unwrap();
-        if *length == MAX_SAMPLES as u16 {
+        if self.length == MAX_SAMPLES as u16 {
             return false;
         }
 
-        let head = (*self.tail.lock().unwrap() + *length) % MAX_SAMPLES as u16;
+        let head = (self.tail + self.length) % MAX_SAMPLES as u16;
         self.buffer[head as usize] = sample;
-        *length += 1;
+        self.length += 1;
 
         true
     }
 
+    /// Pushes a two-channel audio sample, making sure not to drop any samples when there is no
+    /// space in the queue
     pub fn push_sample(&mut self, left: u8, right: u8) -> bool {
         if let Some(skipped_right) = self.skipped_right {
             if self.push(skipped_right) {
@@ -69,29 +73,42 @@ impl Iterator for SampleQueue {
     type Item = rodio::Sample;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.process_exited {
-            return None;
-        }
-
-        let mut length = self.length.lock().unwrap();
-        if *length == 0 {
+        if self.length == 0 {
             return Some(0.0);
         }
 
-        let mut tail = self.tail.lock().unwrap();
+        let sample = self.buffer[self.tail as usize];
 
-        let sample = self.buffer[*tail as usize];
-
-        *tail = (*tail + 1) % MAX_SAMPLES as u16;
-        *length -= 1;
+        self.tail = (self.tail + 1) % MAX_SAMPLES as u16;
+        self.length -= 1;
 
         Some(sample as rodio::Sample / 255.0)
     }
 }
 
-impl rodio::Source for SampleQueue {
+pub struct WeakWrapper(Weak<Mutex<SampleQueue>>);
+
+impl WeakWrapper {
+    pub fn new(original: &Arc<Mutex<SampleQueue>>) -> Self {
+        Self(Arc::downgrade(original))
+    }
+}
+
+impl Iterator for WeakWrapper {
+    type Item = rodio::Sample;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.upgrade()?.lock().ok()?.next()
+    }
+}
+
+impl rodio::Source for WeakWrapper {
     fn current_span_len(&self) -> Option<usize> {
-        None
+        if self.0.upgrade().is_some() {
+            None
+        } else {
+            Some(0)
+        }
     }
 
     fn channels(&self) -> rodio::ChannelCount {
@@ -104,31 +121,5 @@ impl rodio::Source for SampleQueue {
 
     fn total_duration(&self) -> Option<std::time::Duration> {
         None
-    }
-}
-
-impl<T: Iterator + 'static> Iterator for MutCell<T> {
-    type Item = T::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.borrow_static().next()
-    }
-}
-
-impl<T: rodio::Source + 'static> rodio::Source for MutCell<T> {
-    fn current_span_len(&self) -> Option<usize> {
-        self.deref().current_span_len()
-    }
-
-    fn channels(&self) -> rodio::ChannelCount {
-        self.deref().channels()
-    }
-
-    fn sample_rate(&self) -> rodio::SampleRate {
-        self.deref().sample_rate()
-    }
-
-    fn total_duration(&self) -> Option<std::time::Duration> {
-        self.deref().total_duration()
     }
 }
