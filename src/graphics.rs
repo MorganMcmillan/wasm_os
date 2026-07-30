@@ -1,41 +1,10 @@
 // Note: this driver is actually intended for all Wasm-os distributions, Provided they use 8-bit
 // pixel graphics
 
-use std::num::NonZeroUsize;
+use crate::{driver::Driver, kernel::ProcessLinker};
 
-use crate::driver::Driver;
-
-pub struct GraphicsDriver;
-
-impl Driver for GraphicsDriver {
-    fn name(&self) -> &'static str {
-        "driver_graphics"
-    }
-
-    fn register_functions(
-        &self,
-        linker: &mut crate::kernel::ProcessLinker,
-        id: usize,
-    ) -> wasmtime::Result<()> {
-        todo!()
-    }
-
-    fn update(
-        &mut self,
-        kernel: &'static crate::mut_cell::MutCell<crate::kernel::Kernel>,
-        rl: &mut raylib::prelude::RaylibHandle,
-        thread: &raylib::prelude::RaylibThread,
-    ) {
-        // Pass
-    }
-
-    fn create_process_state(&mut self) -> Option<Box<dyn std::any::Any + Send>> {
-        Some(Box::new(GraphicsState::new()))
-    }
-
-    fn as_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
+pub fn load_graphics_functions(linker: &mut ProcessLinker) -> wasmtime::Result<()> {
+    todo!()
 }
 
 const FONT_SIZE: usize = 8 * 256;
@@ -43,7 +12,7 @@ const FONT_SIZE: usize = 8 * 256;
 // TODO: create a default font file using some kind of bitmap drawing program.
 const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
 
-struct GraphicsState {
+pub struct GraphicsState {
     pub transparency_color: u8,
     pub draw_region: DrawRegion,
     pub draw_address: usize,

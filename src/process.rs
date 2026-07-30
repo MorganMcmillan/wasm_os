@@ -11,6 +11,7 @@ use wasmtime::ModuleExport;
 
 use crate::async_file::AsyncFile;
 use crate::event::Event;
+use crate::graphics::GraphicsState;
 use crate::id::{Id, IdStore};
 use crate::kernel::{Kernel, Pid};
 use crate::mut_cell::MutCell;
@@ -41,6 +42,7 @@ pub struct Process {
     pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
+    pub graphics_state: GraphicsState,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
 
@@ -72,6 +74,7 @@ impl Process {
             children: Vec::new(),
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
+            graphics_state: GraphicsState::new(),
             driver_states: HashMap::new(),
         }
     }

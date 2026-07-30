@@ -8,7 +8,6 @@ use crate::{
 };
 
 pub mod audio;
-pub mod graphics;
 pub mod input;
 pub mod screen;
 

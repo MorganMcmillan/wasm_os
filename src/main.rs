@@ -13,6 +13,7 @@ mod async_file;
 mod byte_builder;
 mod driver;
 mod event;
+mod graphics;
 mod id;
 mod kernel;
 mod mut_cell;
