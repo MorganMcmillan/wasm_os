@@ -196,6 +196,7 @@ impl GraphicsState {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_textured_line(
         &mut self,
         memory: *mut u8,
@@ -272,8 +273,16 @@ impl GraphicsState {
         todo!()
     }
 
-    pub fn draw_circle(&mut self, memory: *mut u8, cx: i32, cy: i32, radius: i32, color: u8) {
-        let (cx, cy) = self.camera.translate(cx, cy);
+    /// Encapsulates the logic for drawing the pixels on a circle
+    fn draw_circle_octant_points(
+        &mut self,
+        memory: *mut u8,
+        cx: i32,
+        cy: i32,
+        radius: i32,
+        color: u8,
+        action: fn(&mut Self, *mut u8, i32, i32, i32, i32, u8),
+    ) {
         let mut x = 0;
         let mut y = -radius;
         let mut p = -radius;
@@ -286,17 +295,47 @@ impl GraphicsState {
                 p += 2 * x + 1
             }
 
-            self.draw_region.set_pixel(memory, cx + x, cy + y, color);
-            self.draw_region.set_pixel(memory, cx - x, cy + y, color);
-            self.draw_region.set_pixel(memory, cx + x, cy - y, color);
-            self.draw_region.set_pixel(memory, cx - x, cy - y, color);
-            self.draw_region.set_pixel(memory, cx + y, cy + x, color);
-            self.draw_region.set_pixel(memory, cx - y, cy + x, color);
-            self.draw_region.set_pixel(memory, cx + y, cy - x, color);
-            self.draw_region.set_pixel(memory, cx - y, cy - x, color);
+            action(self, memory, cx, cy, x, y, color);
 
             x += 1;
         }
+    }
+
+    pub fn draw_circle(&mut self, memory: *mut u8, cx: i32, cy: i32, radius: i32, color: u8) {
+        self.draw_circle_octant_points(
+            memory,
+            cx,
+            cy,
+            radius,
+            color,
+            |graphics_state, memory, cx, cy, x, y, color| {
+                let (cx, cy) = graphics_state.camera.translate(cx, cy);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx + x, cy + y, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx - x, cy + y, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx + x, cy - y, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx - x, cy - y, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx + y, cy + x, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx - y, cy + x, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx + y, cy - x, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx - y, cy - x, color);
+            },
+        )
     }
 
     pub fn draw_filled_circle(
@@ -307,56 +346,147 @@ impl GraphicsState {
         radius: i32,
         color: u8,
     ) {
-        // No need for transform, it's done by draw_hline
+        self.draw_circle_octant_points(
+            memory,
+            cx,
+            cy,
+            radius,
+            color,
+            |graphics_state, memory, cx, cy, x, y, color| {
+                // No need for transform, it's done by draw_hline
+                // TODO: check that the width argument is correct
+                let px = cx - x;
+                let width = (cx + x - px + 1) as u32;
+                graphics_state.draw_hline(memory, px, cy + y, width, color);
+                graphics_state.draw_hline(memory, px, cy - y, width, color);
+
+                let px = cx - y;
+                let width = (cx + y - px) as u32;
+                graphics_state.draw_hline(memory, px, cy + x, width, color);
+                graphics_state.draw_hline(memory, px, cy - x, width, color);
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_ellipse_quardrant_points(
+        &mut self,
+        memory: *mut u8,
+        cx: i32,
+        cy: i32,
+        x_radius: i32,
+        y_radius: i32,
+        color: u8,
+        action: fn(&mut Self, *mut u8, i32, i32, i32, i32, u8),
+    ) {
         let mut x = 0;
-        let mut y = -radius;
-        let mut p = -radius;
+        let mut y = y_radius;
 
-        while x < -y {
-            if p > 0 {
-                y += 1;
-                p += 2 * (x + y) + 1;
+        // Initial decision parameter of region 1
+        let mut d1 = y_radius * y_radius - x_radius * x_radius * y_radius + x_radius * x_radius;
+        let mut dx = 2 * y_radius * y_radius * x;
+        let mut dy = 2 * x_radius * x_radius * y;
+
+        // For region 1
+        while dx < dy {
+            action(self, memory, cx, cy, x, y, color);
+
+            // Checking and updating value of
+            // decision parameter based on algorithm
+            if d1 < 0 {
+                x += 1;
+                dx += 2 * y_radius * y_radius;
+                d1 += dx + y_radius * y_radius;
             } else {
-                p += 2 * x + 1
+                x += 1;
+                y -= 1;
+                dx += 2 * y_radius * y_radius;
+                dy -= 2 * x_radius * x_radius;
+                d1 += dx - dy + y_radius * y_radius;
             }
+        }
 
-            // TODO: check that the width argument is correct
-            let px = cx - x;
-            let width = (cx + x - px) as u32;
-            self.draw_hline(memory, px, cy + y, width, color);
-            self.draw_hline(memory, px, cy - y, width, color);
+        // Decision parameter of region 2
+        let mut d2 = y_radius * y_radius * (x * x + x) + x_radius * x_radius * (y - 1) * (y - 1)
+            - x_radius * x_radius * y_radius * y_radius;
+        // Plotting points of region 2
+        while y >= 0 {
+            // printing points based on 4-way symmety_radius
+            action(self, memory, cx, cy, x, y, color);
 
-            let px = cx - y;
-            let width = (cx + y - px) as u32;
-            self.draw_hline(memory, px, cy + x, width, color);
-            self.draw_hline(memory, px, cy - x, width, color);
-
-            x += 1;
+            // Checking and updating parameter
+            // value based on algorithm
+            if d2 > 0 {
+                y -= 1;
+                dy -= 2 * x_radius * x_radius;
+                d2 += x_radius * x_radius - dy;
+            } else {
+                y -= 1;
+                x += 1;
+                dx += 2 * y_radius * y_radius;
+                dy -= 2 * x_radius * x_radius;
+                d2 += dx - dy + x_radius * x_radius;
+            }
         }
     }
 
     pub fn draw_ellipse(
         &mut self,
         memory: *mut u8,
-        x: i32,
-        y: i32,
-        h_radius: i32,
-        v_radius: i32,
+        cx: i32,
+        cy: i32,
+        x_radius: i32,
+        y_radius: i32,
         color: u8,
     ) {
-        todo!()
+        self.draw_ellipse_quardrant_points(
+            memory,
+            cx,
+            cy,
+            x_radius,
+            y_radius,
+            color,
+            |graphics_state, memory, cx, cy, x, y, color| {
+                let (cx, cy) = graphics_state.camera.translate(cx, cy);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx + x, cy + y, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx - x, cy + y, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx + x, cy - y, color);
+                graphics_state
+                    .draw_region
+                    .set_pixel(memory, cx - x, cy - y, color);
+            },
+        );
     }
 
     pub fn draw_filled_ellipse(
         &mut self,
         memory: *mut u8,
-        x: i32,
-        y: i32,
-        h_radius: i32,
-        v_radius: i32,
+        cx: i32,
+        cy: i32,
+        x_radius: i32,
+        y_radius: i32,
         color: u8,
     ) {
-        todo!()
+        self.draw_ellipse_quardrant_points(
+            memory,
+            cx,
+            cy,
+            x_radius,
+            y_radius,
+            color,
+            |graphics_state, memory, cx, cy, x, y, color| {
+                let px = cx - x;
+                let width = (cx + x - px + 1) as u32;
+                graphics_state.draw_hline(memory, px, cy + y, width, color);
+                graphics_state.draw_hline(memory, px, cy - y, width, color);
+            },
+        );
     }
 
     pub fn draw_sprite(
