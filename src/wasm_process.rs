@@ -140,15 +140,6 @@ impl<T> WasmProcess<T> {
         &memory[address..(address + len)]
     }
 
-    pub fn get_memory_mut_ptr(&mut self, address: usize) -> *mut u8 {
-        let mem_index = self.store.data().memory_export.unwrap();
-        unsafe {
-            get_memory_slice_mut(&self.instance, &mut self.store, &mem_index)
-                .as_mut_ptr()
-                .add(address)
-        }
-    }
-
     pub fn get_memory_mut(&mut self, address: usize, len: usize) -> &mut [u8] {
         let mem_index = self.store.data().memory_export.unwrap();
         let memory = get_memory_slice_mut(&self.instance, &mut self.store, &mem_index);

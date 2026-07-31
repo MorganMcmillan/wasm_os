@@ -284,7 +284,11 @@ impl<T> Process<T> {
     // Gets the memory address of the current draw region.
     pub fn get_draw_address(&self) -> *mut u8 {
         self.as_wasm_process()
-            .get_memory_mut_ptr(self.graphics_state.draw_address)
+            .get_memory_mut(
+                self.graphics_state.draw_address,
+                self.graphics_state.draw_region.area() as usize,
+            )
+            .as_mut_ptr()
     }
 }
 

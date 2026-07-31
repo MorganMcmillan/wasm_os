@@ -15,10 +15,15 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
 
     linker.func_wrap(
         "env",
-        "set_draw_region",
-        |mut ctx: ProcessContext<T>, address: i32, width: u32, height: u32| {
-            ctx.data_mut().graphics_state.draw_region = DrawRegion::new(width, height);
-            ctx.data_mut().graphics_state.draw_address = address as usize;
+        "clear_draw_region",
+        |ctx: ProcessContext<T>, color: u32| {
+            let address = ctx.data().get_draw_address();
+            unsafe {
+                address.write_bytes(
+                    color as u8,
+                    ctx.data().graphics_state.draw_region.area() as usize,
+                );
+            }
         },
     )?;
 
@@ -171,11 +176,10 @@ impl GraphicsState {
 
         let (x, width) = self.draw_region.clamp_width(x, width);
 
-        for i in 0..width {
-            unsafe {
-                self.draw_region
-                    .set_pixel_unchecked(memory, x + i as i32, y, color);
-            }
+        let index = self.draw_region.as_index(x, y);
+        // SAFETY: x is positive and if it goes out of bounds, then width is 0.
+        unsafe {
+            memory.add(index).write_bytes(color, width as usize);
         }
     }
 
@@ -248,41 +252,136 @@ impl GraphicsState {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_round_rectangle(
         &mut self,
         memory: *mut u8,
         x: i32,
         y: i32,
-        width: i32,
-        height: i32,
+        width: u32,
+        height: u32,
+        radius: u32,
         color: u8,
     ) {
-        // TODO: do MUCH later
-        todo!()
+        // Clamp radius to prevent visual glitches
+        let radius = radius.min(width.min(height) / 3) as i32;
+        let width = width.saturating_sub(2 * radius as u32);
+        let height = height.saturating_sub(2 * radius as u32);
+
+        self.draw_circle_octant_points(radius, |graphics_state, point_x, point_y| {
+            let (point_x, point_y) = graphics_state.camera.translate(point_x, point_y);
+
+            // Top-left
+            let (cx, cy) = (x + radius, y + radius);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - point_x, cy + point_y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + point_y, cy - point_x, color);
+
+            // Top-right
+            let (cx, cy) = (x + width as i32, y + radius);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + point_x, cy + point_y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - point_y, cy - point_x, color);
+
+            // Bottom-left
+            let (cx, cy) = (x + radius, y + height as i32);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - point_x, cy - point_y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + point_y, cy + point_x, color);
+
+            // Bottom-right
+            let (cx, cy) = (x + width as i32, y + height as i32);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + point_x, cy - point_y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - point_y, cy + point_x, color);
+        });
+
+        // Draw connecting lines
+        self.draw_hline(
+            memory,
+            x + radius,
+            y,
+            width.saturating_sub(radius as u32),
+            color,
+        );
+        self.draw_hline(
+            memory,
+            x + radius,
+            y + height as i32,
+            width.saturating_sub(radius as u32),
+            color,
+        );
+        self.draw_vline(
+            memory,
+            x,
+            y + radius,
+            height.saturating_sub(radius as u32),
+            color,
+        );
+        self.draw_vline(
+            memory,
+            x + width as i32,
+            y + radius,
+            height.saturating_sub(radius as u32),
+            color,
+        );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_filled_round_rectangle(
         &mut self,
         memory: *mut u8,
         x: i32,
         y: i32,
-        width: i32,
-        height: i32,
+        width: u32,
+        height: u32,
+        radius: u32,
         color: u8,
     ) {
-        todo!()
+        // Clamp radius to prevent visual glitches
+        let radius = radius.min(width.min(height) / 3) as i32;
+        let width = width.saturating_sub(2 * radius as u32);
+        let height = height.saturating_sub(2 * radius as u32);
+
+        self.draw_circle_octant_points(radius, |graphics_state, point_x, point_y| {
+            let cx = x + radius;
+
+            // Length 1
+            let cy = y + radius;
+            let px = cx - point_x;
+            let line_width = (width as i32 + (2 * point_x)) as u32;
+            graphics_state.draw_hline(memory, px, cy + point_y, line_width, color);
+            let cy = y + height as i32;
+            graphics_state.draw_hline(memory, px, cy - point_y, line_width, color);
+
+            // Length 2
+            let cy = y + radius;
+            let px = cx + point_y;
+            let line_width = (width as i32 - (2 * point_y)) as u32;
+            graphics_state.draw_hline(memory, px, cy - point_x, line_width, color);
+            let cy = y + height as i32;
+            graphics_state.draw_hline(memory, px, cy + point_x, line_width, color);
+        });
+
+        self.draw_filled_rectangle(memory, x, y + radius, width, height, color);
     }
 
-    /// Encapsulates the logic for drawing the pixels on a circle
-    fn draw_circle_octant_points(
-        &mut self,
-        memory: *mut u8,
-        cx: i32,
-        cy: i32,
-        radius: i32,
-        color: u8,
-        action: fn(&mut Self, *mut u8, i32, i32, i32, i32, u8),
-    ) {
+    /// Encapsulates the logic for drawing the pixels on a circle.
+    /// Both x and y are for the top-top-right octant. Meaning: x is always positive, and y is
+    /// always negative.
+    fn draw_circle_octant_points(&mut self, radius: i32, action: impl Fn(&mut Self, i32, i32)) {
         let mut x = 0;
         let mut y = -radius;
         let mut p = -radius;
@@ -295,47 +394,41 @@ impl GraphicsState {
                 p += 2 * x + 1
             }
 
-            action(self, memory, cx, cy, x, y, color);
+            action(self, x, y);
 
             x += 1;
         }
     }
 
     pub fn draw_circle(&mut self, memory: *mut u8, cx: i32, cy: i32, radius: i32, color: u8) {
-        self.draw_circle_octant_points(
-            memory,
-            cx,
-            cy,
-            radius,
-            color,
-            |graphics_state, memory, cx, cy, x, y, color| {
-                let (cx, cy) = graphics_state.camera.translate(cx, cy);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx + x, cy + y, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx - x, cy + y, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx + x, cy - y, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx - x, cy - y, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx + y, cy + x, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx - y, cy + x, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx + y, cy - x, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx - y, cy - x, color);
-            },
-        )
+        self.draw_circle_octant_points(radius, |graphics_state, x, y| {
+            let (cx, cy) = graphics_state.camera.translate(cx, cy);
+
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + x, cy + y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - x, cy + y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + x, cy - y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - x, cy - y, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + y, cy + x, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - y, cy + x, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx + y, cy - x, color);
+            graphics_state
+                .draw_region
+                .set_pixel(memory, cx - y, cy - x, color);
+        })
     }
 
     pub fn draw_filled_circle(
@@ -346,26 +439,19 @@ impl GraphicsState {
         radius: i32,
         color: u8,
     ) {
-        self.draw_circle_octant_points(
-            memory,
-            cx,
-            cy,
-            radius,
-            color,
-            |graphics_state, memory, cx, cy, x, y, color| {
-                // No need for transform, it's done by draw_hline
-                // TODO: check that the width argument is correct
-                let px = cx - x;
-                let width = (cx + x - px + 1) as u32;
-                graphics_state.draw_hline(memory, px, cy + y, width, color);
-                graphics_state.draw_hline(memory, px, cy - y, width, color);
+        self.draw_circle_octant_points(radius, |graphics_state, x, y| {
+            // No need for transform, it's done by draw_hline
+            // TODO: check that the width argument is correct
+            let px = cx - x;
+            let width = (2 * x) as u32;
+            graphics_state.draw_hline(memory, px, cy + y, width, color);
+            graphics_state.draw_hline(memory, px, cy - y, width, color);
 
-                let px = cx - y;
-                let width = (cx + y - px) as u32;
-                graphics_state.draw_hline(memory, px, cy + x, width, color);
-                graphics_state.draw_hline(memory, px, cy - x, width, color);
-            },
-        )
+            let px = cx + y;
+            let width = (2 * -y) as u32;
+            graphics_state.draw_hline(memory, px, cy + x, width, color);
+            graphics_state.draw_hline(memory, px, cy - x, width, color);
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -529,7 +615,7 @@ impl DrawRegion {
         Self { width, height }
     }
 
-    fn area(&self) -> u32 {
+    pub fn area(&self) -> u32 {
         self.width * self.height
     }
 
@@ -541,10 +627,15 @@ impl DrawRegion {
         y >= 0 && y < self.height as i32
     }
 
+    /// Converts x and y coordinates to a byte index, without checking that the are in bounds.
+    pub fn as_index(&self, x: i32, y: i32) -> usize {
+        (x + y * self.width as i32) as usize
+    }
+
     pub unsafe fn set_pixel_unchecked(&mut self, memory: *mut u8, x: i32, y: i32, pixel: u8) {
-        let offset = (x + y * self.width as i32) as isize;
+        let index = self.as_index(x, y);
         unsafe {
-            memory.offset(offset).write(pixel);
+            memory.add(index).write(pixel);
         }
     }
 
@@ -561,11 +652,11 @@ impl DrawRegion {
     /// Clamps the width and x position to be inside this region.
     pub fn clamp_width(&self, mut x: i32, mut width: u32) -> (i32, u32) {
         if x < 0 {
-            width += x.abs() as u32;
+            width += x.unsigned_abs();
             x = 0;
         }
 
-        width = width.min(self.width);
+        width = width.min(self.width.saturating_sub(x as u32));
 
         (x, width)
     }
@@ -573,11 +664,11 @@ impl DrawRegion {
     /// Clamps the height and y position to be inside this region.
     pub fn clamp_height(&self, mut y: i32, mut height: u32) -> (i32, u32) {
         if y < 0 {
-            height += y.abs() as u32;
+            height += y.unsigned_abs();
             y = 0;
         }
 
-        height = height.min(self.height);
+        height = height.min(self.height.saturating_sub(y as u32));
 
         (y, height)
     }
