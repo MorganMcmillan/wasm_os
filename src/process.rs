@@ -15,6 +15,7 @@ use crate::graphics::GraphicsState;
 use crate::id::{Id, IdStore};
 use crate::kernel::{Kernel, Pid};
 use crate::mut_cell::MutCell;
+use crate::wasm_process::WasmProcess;
 
 /// A process represents the state of a running Webassembly process.
 pub struct Process<T: 'static> {
@@ -271,6 +272,19 @@ impl<T> Process<T> {
         self.driver_states
             .get_mut(&driver_id)
             .and_then(|state| state.downcast_mut::<D>())
+    }
+
+    pub fn as_wasm_process(&self) -> &mut WasmProcess<T> {
+        self.kernel
+            .borrow_static()
+            .get_process_mut(self.pid)
+            .unwrap()
+    }
+
+    // Gets the memory address of the current draw region.
+    pub fn get_draw_address(&self) -> *mut u8 {
+        self.as_wasm_process()
+            .get_memory_mut_ptr(self.graphics_state.draw_address)
     }
 }
 

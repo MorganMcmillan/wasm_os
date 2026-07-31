@@ -7,6 +7,7 @@ use std::task::Poll::{Pending, Ready};
 use std::task::{Context, Waker};
 
 use crate::event::Event;
+use crate::graphics::load_graphics_functions;
 use crate::kernel::{Kernel, Pid, ProcessLinker};
 use crate::mut_cell::MutCell;
 use crate::process::Process;
@@ -110,6 +111,7 @@ impl<T> WasmProcess<T> {
 
         // Load functions
         load_system_functions(&mut linker)?;
+        load_graphics_functions(&mut linker)?;
         kernel
             .borrow_static()
             .load_driver_functions(&mut linker, &imported_drivers)?;
@@ -136,6 +138,15 @@ impl<T> WasmProcess<T> {
         let mem_index = self.store.data().memory_export.unwrap();
         let memory = get_memory_slice(&self.instance, &self.store, &mem_index);
         &memory[address..(address + len)]
+    }
+
+    pub fn get_memory_mut_ptr(&mut self, address: usize) -> *mut u8 {
+        let mem_index = self.store.data().memory_export.unwrap();
+        unsafe {
+            get_memory_slice_mut(&self.instance, &mut self.store, &mem_index)
+                .as_mut_ptr()
+                .add(address)
+        }
     }
 
     pub fn get_memory_mut(&mut self, address: usize, len: usize) -> &mut [u8] {
@@ -200,8 +211,6 @@ impl<T> WasmProcess<T> {
                     return code;
                 }
                 Pending => {
-                    // TODO: check that this works. The process needs to always yield when the epoch
-                    // deadline is reached.
                     self_cell.get_mut().store.set_epoch_deadline(1);
                     yield_now().await;
                 }
