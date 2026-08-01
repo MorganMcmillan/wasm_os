@@ -334,7 +334,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
         },
     )?;
 
-    todo!()
+    Ok(())
 }
 
 const FONT_SIZE: usize = 8 * 256;

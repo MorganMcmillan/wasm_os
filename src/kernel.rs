@@ -82,7 +82,7 @@ impl<T: 'static> Kernel<T> {
         // Periodically interupt process execution
         std::thread::spawn(move || {
             loop {
-                std::thread::sleep(Duration::from_millis(50));
+                std::thread::sleep(Duration::from_millis(5));
                 if let Some(engine) = engine_clone.upgrade() {
                     engine.increment_epoch();
                 } else {
