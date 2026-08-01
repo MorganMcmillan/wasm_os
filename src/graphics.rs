@@ -264,9 +264,9 @@ impl GraphicsState {
         color: u8,
     ) {
         // Clamp radius to prevent visual glitches
-        let radius = radius.min(width.min(height) / 3) as i32;
-        let width = width.saturating_sub(2 * radius as u32);
-        let height = height.saturating_sub(2 * radius as u32);
+        let radius = radius.min(width.min(height) / 2) as i32;
+        let inner_width = width.saturating_sub(2 * radius as u32);
+        let inner_height = height.saturating_sub(2 * radius as u32);
 
         self.draw_circle_octant_points(radius, |graphics_state, point_x, point_y| {
             let (point_x, point_y) = graphics_state.camera.translate(point_x, point_y);
@@ -281,7 +281,7 @@ impl GraphicsState {
                 .set_pixel(memory, cx + point_y, cy - point_x, color);
 
             // Top-right
-            let (cx, cy) = (x + width as i32, y + radius);
+            let (cx, cy) = (x + inner_width as i32 + radius, y + radius);
             graphics_state
                 .draw_region
                 .set_pixel(memory, cx + point_x, cy + point_y, color);
@@ -290,7 +290,7 @@ impl GraphicsState {
                 .set_pixel(memory, cx - point_y, cy - point_x, color);
 
             // Bottom-left
-            let (cx, cy) = (x + radius, y + height as i32);
+            let (cx, cy) = (x + radius, y + inner_height as i32 + radius);
             graphics_state
                 .draw_region
                 .set_pixel(memory, cx - point_x, cy - point_y, color);
@@ -299,7 +299,10 @@ impl GraphicsState {
                 .set_pixel(memory, cx + point_y, cy + point_x, color);
 
             // Bottom-right
-            let (cx, cy) = (x + width as i32, y + height as i32);
+            let (cx, cy) = (
+                x + inner_width as i32 + radius,
+                y + inner_height as i32 + radius,
+            );
             graphics_state
                 .draw_region
                 .set_pixel(memory, cx + point_x, cy - point_y, color);
@@ -309,32 +312,20 @@ impl GraphicsState {
         });
 
         // Draw connecting lines
+        self.draw_hline(memory, x + radius, y, inner_width, color);
         self.draw_hline(
             memory,
             x + radius,
-            y,
-            width.saturating_sub(radius as u32),
+            y + inner_height as i32 + radius,
+            inner_width,
             color,
         );
-        self.draw_hline(
-            memory,
-            x + radius,
-            y + height as i32,
-            width.saturating_sub(radius as u32),
-            color,
-        );
+        self.draw_vline(memory, x, y + radius, inner_height, color);
         self.draw_vline(
             memory,
-            x,
+            x + inner_width as i32 + radius,
             y + radius,
-            height.saturating_sub(radius as u32),
-            color,
-        );
-        self.draw_vline(
-            memory,
-            x + width as i32,
-            y + radius,
-            height.saturating_sub(radius as u32),
+            inner_height,
             color,
         );
     }
@@ -351,9 +342,9 @@ impl GraphicsState {
         color: u8,
     ) {
         // Clamp radius to prevent visual glitches
-        let radius = radius.min(width.min(height) / 3) as i32;
-        let width = width.saturating_sub(2 * radius as u32);
-        let height = height.saturating_sub(2 * radius as u32);
+        let radius = radius.min(width.min(height) / 2) as i32;
+        let inner_width = width.saturating_sub(2 * radius as u32);
+        let inner_height = height.saturating_sub(2 * radius as u32);
 
         self.draw_circle_octant_points(radius, |graphics_state, point_x, point_y| {
             let cx = x + radius;
@@ -361,21 +352,21 @@ impl GraphicsState {
             // Length 1
             let cy = y + radius;
             let px = cx - point_x;
-            let line_width = (width as i32 + (2 * point_x)) as u32;
+            let line_width = (inner_width as i32 + 2 * point_x) as u32;
             graphics_state.draw_hline(memory, px, cy + point_y, line_width, color);
-            let cy = y + height as i32;
+            let cy = y + inner_height as i32 + radius;
             graphics_state.draw_hline(memory, px, cy - point_y, line_width, color);
 
             // Length 2
             let cy = y + radius;
             let px = cx + point_y;
-            let line_width = (width as i32 - (2 * point_y)) as u32;
+            let line_width = (inner_width as i32 - 2 * point_y) as u32;
             graphics_state.draw_hline(memory, px, cy - point_x, line_width, color);
-            let cy = y + height as i32;
+            let cy = y + inner_height as i32 + radius;
             graphics_state.draw_hline(memory, px, cy + point_x, line_width, color);
         });
 
-        self.draw_filled_rectangle(memory, x, y + radius, width, height, color);
+        self.draw_filled_rectangle(memory, x, y + radius, inner_width, inner_height, color);
     }
 
     /// Encapsulates the logic for drawing the pixels on a circle.
