@@ -250,7 +250,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             let spr_height = spr_height as usize;
             let sprite = ctx
                 .data()
-                .get_memory_mut(sprite as usize, spr_width * spr_height)
+                .get_memory(sprite as usize, spr_width * spr_height)
                 .as_mut_ptr();
 
             ctx.data_mut().graphics_state.draw_sprite(
@@ -280,14 +280,14 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             let map_height = map_height as usize;
             let map = ctx
                 .data()
-                .get_memory_mut(map as usize, map_width * map_height)
+                .get_memory(map as usize, map_width * map_height)
                 .as_mut_ptr();
 
             let spr_width = spr_width as usize;
             let spr_height = spr_height as usize;
             let spritesheet = ctx
                 .data()
-                .get_memory_mut(spritesheet as usize, spr_width * spr_height * 256)
+                .get_memory(spritesheet as usize, spr_width * spr_height * 256)
                 .as_mut_ptr();
 
             ctx.data_mut().graphics_state.draw_map(
@@ -306,10 +306,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
         "env",
         "set_font",
         |mut ctx: ProcessContext<T>, font_ptr: i32| {
-            let font = ctx
-                .data()
-                .get_memory_mut(font_ptr as usize, 256 * 8)
-                .as_ptr();
+            let font = ctx.data().get_memory(font_ptr as usize, 256 * 8).as_ptr();
             ctx.data_mut().graphics_state.set_font(font);
         },
     )?;
@@ -324,9 +321,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
         |mut ctx: ProcessContext<T>, text_ptr: i32, text_len: u32, fg: u32, bg: u32| {
             let draw_address = ctx.data().get_draw_address();
 
-            let text = ctx
-                .data()
-                .get_memory_mut(text_ptr as usize, text_len as usize);
+            let text = ctx.data().get_memory(text_ptr as usize, text_len as usize);
 
             ctx.data_mut()
                 .graphics_state
@@ -384,8 +379,15 @@ impl GraphicsState {
         }
     }
 
-    // Uses Bresenham's algorithm to quickly draw a line.
-    pub fn draw_line(&mut self, memory: *mut u8, x1: i32, y1: i32, x2: i32, y2: i32, color: u8) {
+    // Uses Bresenham's algorithm to iterate the points on a line
+    fn line_points(
+        &mut self,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        mut action: impl FnMut(&mut Self, i32, i32),
+    ) {
         let (x1, y1) = self.camera.translate(x1, y1);
         let (x2, y2) = self.camera.translate(x2, y2);
 
@@ -394,7 +396,7 @@ impl GraphicsState {
 
         let mut y = y1;
         for x in x1..(x2 + 1) {
-            self.draw_region.set_pixel(memory, x, y, color);
+            action(self, x, y);
 
             slope_error_new += m_new;
 
@@ -403,6 +405,41 @@ impl GraphicsState {
                 slope_error_new -= (y2 - y1) * 2;
             }
         }
+    }
+
+    pub fn draw_line(&mut self, memory: *mut u8, x1: i32, y1: i32, x2: i32, y2: i32, color: u8) {
+        self.line_points(x1, y1, x2, y2, |graphics_state, x, y| {
+            graphics_state.draw_pixel(memory, x, y, color);
+        });
+    }
+
+    pub fn draw_textured_line(
+        &mut self,
+        memory: *mut u8,
+        x1: i32,
+        y1: i32,
+        x2: i32,
+        y2: i32,
+        texture: *const u8,
+        tex_width: u32,
+        tex_height: u32,
+        mut tex_x: f32,
+        mut tex_y: f32,
+        tex_dx: f32,
+        tex_dy: f32,
+    ) {
+        let texture_region = DrawRegion::new(tex_width, tex_height);
+
+        self.line_points(x1, y1, x2, y2, |graphics_state, x, y| {
+            graphics_state.draw_pixel(
+                memory,
+                x,
+                y,
+                texture_region.get_pixel_wrapped(texture, tex_x as i32, tex_y as i32),
+            );
+            tex_x += tex_dx;
+            tex_y += tex_dy;
+        });
     }
 
     pub fn draw_hline(&mut self, memory: *mut u8, x: i32, y: i32, width: u32, color: u8) {
@@ -437,26 +474,6 @@ impl GraphicsState {
             }
         }
     }
-
-    pub fn draw_textured_line(
-        &mut self,
-        memory: *mut u8,
-        x1: i32,
-        y1: i32,
-        x2: i32,
-        y2: i32,
-        texture: *const u8,
-        tex_width: i32,
-        tex_height: i32,
-        tex_x: i32,
-        tex_y: i32,
-        tex_dx: i32,
-        tex_dy: i32,
-    ) {
-        // TODO: do this a LOT later
-        todo!()
-    }
-
     pub fn draw_rectangle(
         &mut self,
         memory: *mut u8,
@@ -872,6 +889,12 @@ impl DrawRegion {
                 self.set_pixel_unchecked(memory, x, y, pixel);
             }
         }
+    }
+
+    /// Gets the pixel at the given position, with that position being wrapped to within the texture.
+    pub fn get_pixel_wrapped(&self, memory: *const u8, x: i32, y: i32) -> u8 {
+        let (x, y) = (x % self.width as i32, y % self.height as i32);
+        unsafe { memory.add(self.as_index(x, y)).read() }
     }
 
     /// Clamps the width and x position to be inside this region.

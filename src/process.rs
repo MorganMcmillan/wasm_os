@@ -285,14 +285,18 @@ impl<T> Process<T> {
             .unwrap()
     }
 
-    /// Gets a slice of memory
-    pub fn get_memory_mut(&self, address: usize, len: usize) -> &'static mut [u8] {
-        self.as_wasm_process().get_memory_mut(address, len)
+    /// Gets a mutable slice of memory
+    pub fn get_memory(&self, address: usize, len: usize) -> &'static mut [u8] {
+        self.as_wasm_process().get_memory(address, len)
+    }
+
+    pub fn set_memory(&self, address: usize, value: &[u8]) {
+        self.as_wasm_process().set_memory(address, value);
     }
 
     /// Gets the memory address of the current draw region.
     pub fn get_draw_address(&self) -> *mut u8 {
-        self.get_memory_mut(
+        self.get_memory(
             self.graphics_state.draw_address,
             self.graphics_state.draw_region.area() as usize,
         )

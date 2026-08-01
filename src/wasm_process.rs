@@ -36,18 +36,6 @@ fn get_wasm_memory<T>(
     }
 }
 
-/// Returns a view of a WASM memory.
-/// Note: this function exists entirely because I was having borrow errors.
-#[allow(invalid_reference_casting, clippy::transmute_ptr_to_ref)]
-fn get_memory_slice<'a, T>(
-    instance: &'a Instance,
-    store: &'a ProcessStore<T>,
-    mem_index: &ModuleExport,
-) -> &'a [u8] {
-    let store_ptr = store as *const ProcessStore<T> as *mut ProcessStore<T>;
-    get_wasm_memory(instance, store_ptr, mem_index).data(store)
-}
-
 /// Returns a mutable view of a WASM memory.
 /// Note: this function exists entirely because I was having borrow errors.
 fn get_memory_slice_mut<'a, T>(
@@ -133,14 +121,7 @@ impl<T> WasmProcess<T> {
         Ok(Self { instance, store })
     }
 
-    /// Gets a slice of memory
-    pub fn get_memory(&self, address: usize, len: usize) -> &[u8] {
-        let mem_index = self.store.data().memory_export.unwrap();
-        let memory = get_memory_slice(&self.instance, &self.store, &mem_index);
-        &memory[address..(address + len)]
-    }
-
-    pub fn get_memory_mut(&mut self, address: usize, len: usize) -> &'static mut [u8] {
+    pub fn get_memory(&mut self, address: usize, len: usize) -> &'static mut [u8] {
         let mem_index = self.store.data().memory_export.unwrap();
         let memory = get_memory_slice_mut(&self.instance, &mut self.store, &mem_index);
         unsafe { std::mem::transmute(&mut memory[address..(address + len)]) }
@@ -148,7 +129,7 @@ impl<T> WasmProcess<T> {
 
     /// Sets a slice of memory. The length of the slice is given by the lenght of the value
     pub fn set_memory(&mut self, address: usize, value: &[u8]) {
-        let memory = self.get_memory_mut(address, value.len());
+        let memory = self.get_memory(address, value.len());
 
         for (i, &byte) in value.iter().enumerate() {
             memory[i] = byte;

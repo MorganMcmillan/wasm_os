@@ -99,10 +99,11 @@ impl Driver<RaylibUserdata> for ScreenState {
             "upload_framebuffer",
             move |ctx: ProcessContext<RaylibUserdata>, framebuffer: i32| {
                 let drawstate = ctx.data().kernel.borrow_static().get_driver::<Self>(id);
-                drawstate.upload_framebuffer(
-                    system_functions::get_memory(&ctx, framebuffer, FRAMEBUFFER_SIZE as i32)
-                        .unwrap(),
-                );
+                drawstate.upload_framebuffer(system_functions::get_memory(
+                    &ctx,
+                    framebuffer,
+                    FRAMEBUFFER_SIZE as u32,
+                ));
                 Ok(())
             },
         )?;

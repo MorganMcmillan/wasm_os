@@ -55,22 +55,19 @@ impl Driver<RaylibUserdata> for AudioState {
             "play_sound",
             move |mut ctx: ProcessContext<RaylibUserdata>,
                   sound_ptr: i32,
-                  sound_len: i32,
+                  sound_len: u32,
                   left_volume: i32,
-                  right_volume: i32| {
+                  right_volume: i32|
+                  -> u32 {
                 let left_volume = left_volume.min(255) as u8;
                 let right_volume = right_volume.min(255) as u8;
 
-                let sound = match system_functions::get_memory(&ctx, sound_ptr, sound_len) {
-                    Ok(sound) => sound,
-                    Err(e) => return e,
-                };
+                let sound = system_functions::get_memory(&ctx, sound_ptr, sound_len);
 
                 ctx.data_mut()
                     .get_driver_state_mut::<ProcessAudioState>(id)
                     .unwrap()
-                    .play(sound, left_volume, right_volume);
-                0
+                    .play(sound, left_volume, right_volume) as u32
             },
         )?;
 
