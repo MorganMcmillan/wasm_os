@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 // Note: this driver is actually intended for all Wasm-os distributions, Provided they use 8-bit
 // pixel graphics
 
@@ -30,10 +32,10 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "set_transparency_color",
-        |mut ctx: ProcessContext<T>, color: i32| -> i32 {
+        |mut ctx: ProcessContext<T>, color: u32| -> u32 {
             let old_color = ctx.data_mut().graphics_state.transparency_color;
             ctx.data_mut().graphics_state.transparency_color = color as u8;
-            old_color as i32
+            old_color as u32
         },
     )?;
 
@@ -56,7 +58,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "draw_pixel",
-        |mut ctx: ProcessContext<T>, x: i32, y: i32, pixel: i32| {
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, pixel: u32| {
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
@@ -67,7 +69,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "draw_line",
-        |mut ctx: ProcessContext<T>, x1: i32, y1: i32, x2: i32, y2: i32, color: i32| {
+        |mut ctx: ProcessContext<T>, x1: i32, y1: i32, x2: i32, y2: i32, color: u32| {
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
@@ -78,7 +80,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "draw_hline",
-        |mut ctx: ProcessContext<T>, x: i32, y: i32, width: u32, color: i32| {
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, width: u32, color: u32| {
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
@@ -89,13 +91,249 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "draw_vline",
-        |mut ctx: ProcessContext<T>, x: i32, y: i32, height: u32, color: i32| {
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, height: u32, color: u32| {
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
                 .draw_vline(draw_address, x, y, height, color as u8);
         },
     )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_rectangle",
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, width: u32, height: u32, color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut().graphics_state.draw_rectangle(
+                draw_address,
+                x,
+                y,
+                width,
+                height,
+                color as u8,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_filled_rectangle",
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, width: u32, height: u32, color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut().graphics_state.draw_filled_rectangle(
+                draw_address,
+                x,
+                y,
+                width,
+                height,
+                color as u8,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_round_rectangle",
+        |mut ctx: ProcessContext<T>,
+         x: i32,
+         y: i32,
+         width: u32,
+         height: u32,
+         radius: u32,
+         color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut().graphics_state.draw_round_rectangle(
+                draw_address,
+                x,
+                y,
+                width,
+                height,
+                radius,
+                color as u8,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_filled_round_rectangle",
+        |mut ctx: ProcessContext<T>,
+         x: i32,
+         y: i32,
+         width: u32,
+         height: u32,
+         radius: u32,
+         color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut().graphics_state.draw_filled_round_rectangle(
+                draw_address,
+                x,
+                y,
+                width,
+                height,
+                radius,
+                color as u8,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_circle",
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, radius: u32, color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut()
+                .graphics_state
+                .draw_circle(draw_address, x, y, radius, color as u8);
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_filled_circle",
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, radius: u32, color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut().graphics_state.draw_filled_circle(
+                draw_address,
+                x,
+                y,
+                radius,
+                color as u8,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_ellipse",
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, x_radius: u32, y_radius: u32, color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut().graphics_state.draw_ellipse(
+                draw_address,
+                x,
+                y,
+                x_radius,
+                y_radius,
+                color as u8,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_filled_ellipse",
+        |mut ctx: ProcessContext<T>, x: i32, y: i32, x_radius: u32, y_radius: u32, color: u32| {
+            let draw_address = ctx.data().get_draw_address();
+            ctx.data_mut().graphics_state.draw_filled_ellipse(
+                draw_address,
+                x,
+                y,
+                x_radius,
+                y_radius,
+                color as u8,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_sprite",
+        |mut ctx: ProcessContext<T>,
+         x: i32,
+         y: i32,
+         sprite: i32,
+         spr_width: u32,
+         spr_height: u32| {
+            let draw_address = ctx.data().get_draw_address();
+
+            let spr_width = spr_width as usize;
+            let spr_height = spr_height as usize;
+            let sprite = ctx
+                .data()
+                .get_memory_mut(sprite as usize, spr_width * spr_height)
+                .as_mut_ptr();
+
+            ctx.data_mut().graphics_state.draw_sprite(
+                draw_address,
+                x,
+                y,
+                sprite,
+                spr_width,
+                spr_height,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "draw_map",
+        |mut ctx: ProcessContext<T>,
+         map: i32,
+         map_width: u32,
+         map_height: u32,
+         spritesheet: i32,
+         spr_width: u32,
+         spr_height: u32| {
+            let draw_address = ctx.data().get_draw_address();
+
+            let map_width = map_width as usize;
+            let map_height = map_height as usize;
+            let map = ctx
+                .data()
+                .get_memory_mut(map as usize, map_width * map_height)
+                .as_mut_ptr();
+
+            let spr_width = spr_width as usize;
+            let spr_height = spr_height as usize;
+            let spritesheet = ctx
+                .data()
+                .get_memory_mut(spritesheet as usize, spr_width * spr_height * 256)
+                .as_mut_ptr();
+
+            ctx.data_mut().graphics_state.draw_map(
+                draw_address,
+                map,
+                map_width,
+                map_height,
+                spritesheet,
+                spr_width,
+                spr_height,
+            );
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "set_font",
+        |mut ctx: ProcessContext<T>, font_ptr: i32| {
+            let font = ctx
+                .data()
+                .get_memory_mut(font_ptr as usize, 256 * 8)
+                .as_ptr();
+            ctx.data_mut().graphics_state.set_font(font);
+        },
+    )?;
+
+    linker.func_wrap("env", "use_default_font", |mut ctx: ProcessContext<T>| {
+        ctx.data_mut().graphics_state.use_default_font();
+    })?;
+
+    linker.func_wrap(
+        "env",
+        "draw_text",
+        |mut ctx: ProcessContext<T>, text_ptr: i32, text_len: u32, fg: u32, bg: u32| {
+            let draw_address = ctx.data().get_draw_address();
+
+            let text = ctx
+                .data()
+                .get_memory_mut(text_ptr as usize, text_len as usize);
+
+            ctx.data_mut()
+                .graphics_state
+                .draw_text(draw_address, text, fg as u8, bg as u8);
+        },
+    )?;
+
     todo!()
 }
 
@@ -200,7 +438,6 @@ impl GraphicsState {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_textured_line(
         &mut self,
         memory: *mut u8,
@@ -252,7 +489,6 @@ impl GraphicsState {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_round_rectangle(
         &mut self,
         memory: *mut u8,
@@ -268,7 +504,7 @@ impl GraphicsState {
         let inner_width = width.saturating_sub(2 * radius as u32);
         let inner_height = height.saturating_sub(2 * radius as u32);
 
-        self.draw_circle_octant_points(radius, |graphics_state, point_x, point_y| {
+        self.draw_circle_octant_points(radius as u32, |graphics_state, point_x, point_y| {
             let (point_x, point_y) = graphics_state.camera.translate(point_x, point_y);
 
             // Top-left
@@ -330,7 +566,6 @@ impl GraphicsState {
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_filled_round_rectangle(
         &mut self,
         memory: *mut u8,
@@ -346,7 +581,7 @@ impl GraphicsState {
         let inner_width = width.saturating_sub(2 * radius as u32);
         let inner_height = height.saturating_sub(2 * radius as u32);
 
-        self.draw_circle_octant_points(radius, |graphics_state, point_x, point_y| {
+        self.draw_circle_octant_points(radius as u32, |graphics_state, point_x, point_y| {
             let cx = x + radius;
 
             // Length 1
@@ -372,7 +607,8 @@ impl GraphicsState {
     /// Encapsulates the logic for drawing the pixels on a circle.
     /// Both x and y are for the top-top-right octant. Meaning: x is always positive, and y is
     /// always negative.
-    fn draw_circle_octant_points(&mut self, radius: i32, action: impl Fn(&mut Self, i32, i32)) {
+    fn draw_circle_octant_points(&mut self, radius: u32, action: impl Fn(&mut Self, i32, i32)) {
+        let radius = radius as i32;
         let mut x = 0;
         let mut y = -radius;
         let mut p = -radius;
@@ -391,7 +627,7 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_circle(&mut self, memory: *mut u8, cx: i32, cy: i32, radius: i32, color: u8) {
+    pub fn draw_circle(&mut self, memory: *mut u8, cx: i32, cy: i32, radius: u32, color: u8) {
         self.draw_circle_octant_points(radius, |graphics_state, x, y| {
             let (cx, cy) = graphics_state.camera.translate(cx, cy);
 
@@ -427,12 +663,11 @@ impl GraphicsState {
         memory: *mut u8,
         cx: i32,
         cy: i32,
-        radius: i32,
+        radius: u32,
         color: u8,
     ) {
         self.draw_circle_octant_points(radius, |graphics_state, x, y| {
             // No need for transform, it's done by draw_hline
-            // TODO: check that the width argument is correct
             let px = cx - x;
             let width = (2 * x) as u32;
             graphics_state.draw_hline(memory, px, cy + y, width, color);
@@ -445,7 +680,6 @@ impl GraphicsState {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn draw_ellipse_quardrant_points(
         &mut self,
         memory: *mut u8,
@@ -512,16 +746,16 @@ impl GraphicsState {
         memory: *mut u8,
         cx: i32,
         cy: i32,
-        x_radius: i32,
-        y_radius: i32,
+        x_radius: u32,
+        y_radius: u32,
         color: u8,
     ) {
         self.draw_ellipse_quardrant_points(
             memory,
             cx,
             cy,
-            x_radius,
-            y_radius,
+            x_radius as i32,
+            y_radius as i32,
             color,
             |graphics_state, memory, cx, cy, x, y, color| {
                 let (cx, cy) = graphics_state.camera.translate(cx, cy);
@@ -546,16 +780,16 @@ impl GraphicsState {
         memory: *mut u8,
         cx: i32,
         cy: i32,
-        x_radius: i32,
-        y_radius: i32,
+        x_radius: u32,
+        y_radius: u32,
         color: u8,
     ) {
         self.draw_ellipse_quardrant_points(
             memory,
             cx,
             cy,
-            x_radius,
-            y_radius,
+            x_radius as i32,
+            y_radius as i32,
             color,
             |graphics_state, memory, cx, cy, x, y, color| {
                 let px = cx - x;
@@ -572,8 +806,8 @@ impl GraphicsState {
         x: i32,
         y: i32,
         sprite: *const u8,
-        spr_width: i32,
-        spr_height: i32,
+        spr_width: usize,
+        spr_height: usize,
     ) {
         todo!()
     }

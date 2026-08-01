@@ -140,10 +140,10 @@ impl<T> WasmProcess<T> {
         &memory[address..(address + len)]
     }
 
-    pub fn get_memory_mut(&mut self, address: usize, len: usize) -> &mut [u8] {
+    pub fn get_memory_mut(&mut self, address: usize, len: usize) -> &'static mut [u8] {
         let mem_index = self.store.data().memory_export.unwrap();
         let memory = get_memory_slice_mut(&self.instance, &mut self.store, &mem_index);
-        &mut memory[address..(address + len)]
+        unsafe { std::mem::transmute(&mut memory[address..(address + len)]) }
     }
 
     /// Sets a slice of memory. The length of the slice is given by the lenght of the value

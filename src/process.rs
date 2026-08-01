@@ -257,6 +257,8 @@ impl<T> Process<T> {
         self.event_handlers.remove(&name);
     }
 
+    // Drivers
+
     pub fn add_driver_state(&mut self, driver_id: usize, state: Box<dyn Any + Send>) {
         self.driver_states.insert(driver_id, state);
     }
@@ -274,6 +276,8 @@ impl<T> Process<T> {
             .and_then(|state| state.downcast_mut::<D>())
     }
 
+    // Wasm-side stuff
+
     pub fn as_wasm_process(&self) -> &mut WasmProcess<T> {
         self.kernel
             .borrow_static()
@@ -281,14 +285,18 @@ impl<T> Process<T> {
             .unwrap()
     }
 
-    // Gets the memory address of the current draw region.
+    /// Gets a slice of memory
+    pub fn get_memory_mut(&self, address: usize, len: usize) -> &'static mut [u8] {
+        self.as_wasm_process().get_memory_mut(address, len)
+    }
+
+    /// Gets the memory address of the current draw region.
     pub fn get_draw_address(&self) -> *mut u8 {
-        self.as_wasm_process()
-            .get_memory_mut(
-                self.graphics_state.draw_address,
-                self.graphics_state.draw_region.area() as usize,
-            )
-            .as_mut_ptr()
+        self.get_memory_mut(
+            self.graphics_state.draw_address,
+            self.graphics_state.draw_region.area() as usize,
+        )
+        .as_mut_ptr()
     }
 }
 
