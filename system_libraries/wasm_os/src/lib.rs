@@ -46,8 +46,8 @@ unsafe extern "C" {
     #[link_name = "remove_event_handler"]
     fn extern_remove_event_handler(name_ptr: *const u8, name_len: i32) -> i32;
 
-    #[link_name = "proc_memcpy"]
-    fn extern_proc_memcpy(src_pid: i32, src: i32, dest: *mut u8, len: i32) -> i32;
+    #[link_name = "copy_process_memory"]
+    fn extern_copy_process_memory(src_pid: i32, src: i32, dest: *mut u8, len: i32) -> i32;
 
     #[link_name = "set_process_name"]
     fn extern_set_process_name(name_ptr: *const u8, name_len: i32) -> i32;
@@ -169,8 +169,8 @@ pub fn remove_event_handler(name: &str) -> i32 {
     unsafe { extern_remove_event_handler(name.as_ptr(), name.len() as i32) }
 }
 
-pub fn proc_memcpy(src_pid: i32, src: i32, dest: &mut [u8]) -> i32 {
-    unsafe { extern_proc_memcpy(src_pid, src, dest.as_mut_ptr(), dest.len() as i32) }
+pub fn copy_process_memory(src_pid: i32, src: i32, dest: &mut [u8]) -> i32 {
+    unsafe { extern_copy_process_memory(src_pid, src, dest.as_mut_ptr(), dest.len() as i32) }
 }
 
 pub fn set_process_name(name: &str) -> i32 {

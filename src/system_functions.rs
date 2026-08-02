@@ -208,7 +208,7 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
 
     linker.func_wrap(
         "env",
-        "proc_memcpy",
+        "copy_process_memory",
         |mut ctx: ProcessContext<T>, src_pid: i32, src: i32, dest: i32, len: u32| -> i32 {
             let src_pid = Pid::from_i32(src_pid);
             let dest = dest as usize;
