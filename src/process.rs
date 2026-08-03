@@ -2,8 +2,10 @@
 
 use std::any::Any;
 use std::collections::HashMap;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
+use tokio::io::AsyncReadExt;
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
@@ -190,6 +192,18 @@ impl<T> Process<T> {
         };
 
         self.open_files.new_id(AsyncFile::File(file))
+    }
+
+    pub async fn read_entire_file(&mut self, path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+        let path = self.get_absolute_path(path.as_ref());
+
+        let mut file = self.kernel.borrow_static().open_async_file(&path, 0)?;
+
+        let mut contents = Vec::with_capacity(64);
+
+        file.read_to_end(&mut contents).await?;
+
+        Ok(contents)
     }
 
     fn set_current_directory(&mut self, path: &Path) -> i32 {
