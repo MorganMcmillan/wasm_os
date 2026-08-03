@@ -1,17 +1,9 @@
 use std::any::Any;
 
-use raylib::{RaylibHandle, RaylibThread};
-
-pub type RaylibUserdata = (&'static mut RaylibHandle, &'static RaylibThread);
-
 use crate::{
     kernel::{Kernel, ProcessLinker},
     mut_cell::MutCell,
 };
-
-pub mod audio;
-pub mod input;
-pub mod screen;
 
 pub trait Driver<T: 'static>: Any {
     // This driver's name.

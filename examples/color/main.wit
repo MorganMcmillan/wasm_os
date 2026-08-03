@@ -1,5 +1,0 @@
-package component:my-package;
-
-world main {
-    export run: func() -> s32;
-}

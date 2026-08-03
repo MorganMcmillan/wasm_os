@@ -28,3 +28,9 @@ impl ByteBuilder {
         self
     }
 }
+
+impl Default for ByteBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}

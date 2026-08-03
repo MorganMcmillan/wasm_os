@@ -1,9 +1,10 @@
-use std::ptr::copy_nonoverlapping;
-
-use crate::graphics::{camera::Camera, draw_region::DrawRegion};
+use crate::graphics::{
+    camera::Camera,
+    color::{self, Color},
+    draw_region::DrawRegion,
+};
 
 const FONT_SIZE: usize = 8 * 256;
-
 // TODO: create a default font file using some kind of bitmap drawing program.
 const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
 
@@ -13,6 +14,7 @@ pub struct GraphicsState {
     pub draw_address: usize,
     pub camera: Camera,
     pub font: [u8; FONT_SIZE],
+    pub fill_pattern: [u8; 8],
 }
 
 impl GraphicsState {
@@ -23,6 +25,7 @@ impl GraphicsState {
             draw_address: 0,
             camera: Camera::new(0, 0),
             font: DEFAULT_FONT,
+            fill_pattern: [0; 8],
         }
     }
 
@@ -37,14 +40,37 @@ impl GraphicsState {
         self.font = DEFAULT_FONT;
     }
 
-    pub fn draw_pixel(&mut self, memory: *mut u8, x: i32, y: i32, color: u8) {
-        let (x, y) = self.camera.translate(x, y);
+    pub fn set_fill_pattern(&mut self, fillp: u64) {
+        self.fill_pattern = fillp.to_be_bytes();
+    }
+
+    pub fn get_fill_pattern(&self) -> u64 {
+        u64::from_be_bytes(self.fill_pattern)
+    }
+
+    /// Gets the fill pattern line for any y coordinate in the draw region.
+    fn get_fill_pattern_line(&self, y: usize, color: Color) -> [u8; 8] {
+        let (fg, bg) = color::split_color(color);
+        byte_to_8_bytes(self.fill_pattern[y % 8], fg, bg)
+    }
+
+    fn get_fill_pattern_pixel(&self, x: usize, y: usize, color: Color) -> u8 {
+        self.get_fill_pattern_line(y, color)[x % 8]
+    }
+
+    pub fn draw_pixel_untranslated(&mut self, memory: *mut u8, x: i32, y: i32, color: Color) {
+        let color = self.get_fill_pattern_pixel(x as usize, y as usize, color);
         self.draw_region.set_pixel(memory, x, y, color);
     }
 
+    pub fn draw_pixel(&mut self, memory: *mut u8, x: i32, y: i32, color: Color) {
+        let (x, y) = self.camera.translate(x, y);
+        self.draw_pixel_untranslated(memory, x, y, color);
+    }
+
     // Checks is the pixel is the transparency color.
-    pub fn draw_pixel_checked(&mut self, memory: *mut u8, x: i32, y: i32, color: u8) {
-        if color != self.transparency_color {
+    pub fn draw_pixel_checked(&mut self, memory: *mut u8, x: i32, y: i32, color: Color) {
+        if color as u8 != self.transparency_color {
             self.draw_pixel(memory, x, y, color);
         }
     }
@@ -77,7 +103,7 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_line(&mut self, memory: *mut u8, x1: i32, y1: i32, x2: i32, y2: i32, color: u8) {
+    pub fn draw_line(&mut self, memory: *mut u8, x1: i32, y1: i32, x2: i32, y2: i32, color: Color) {
         self.line_points(x1, y1, x2, y2, |graphics_state, x, y| {
             graphics_state.draw_pixel(memory, x, y, color);
         });
@@ -105,14 +131,15 @@ impl GraphicsState {
                 memory,
                 x,
                 y,
-                texture_region.get_pixel_wrapped(texture, tex_x as i32, tex_y as i32),
+                // TODO: allow fill patterns to look up colors in a secondary palette
+                texture_region.get_pixel_wrapped(texture, tex_x as i32, tex_y as i32) as Color,
             );
             tex_x += tex_dx;
             tex_y += tex_dy;
         });
     }
 
-    pub fn draw_hline(&mut self, memory: *mut u8, x: i32, y: i32, width: u32, color: u8) {
+    pub fn draw_hline(&mut self, memory: *mut u8, x: i32, y: i32, width: u32, color: Color) {
         let (x, y) = self.camera.translate(x, y);
 
         if !self.draw_region.inside_height(y) {
@@ -122,13 +149,17 @@ impl GraphicsState {
         let (x, width, _) = self.draw_region.clamp_width(x, width);
 
         let index = self.draw_region.as_index(x, y);
-        // SAFETY: x is positive and if it goes out of bounds, then width is 0.
         unsafe {
-            memory.add(index).write_bytes(color, width as usize);
+            // SAFETY: x is positive and if it goes out of bounds, then width is 0.
+            let destination = memory.add(index);
+            for i in 0..width as usize {
+                let pixel = self.get_fill_pattern_pixel(x as usize + i, y as usize, color);
+                destination.add(i).write(pixel);
+            }
         }
     }
 
-    pub fn draw_vline(&mut self, memory: *mut u8, x: i32, y: i32, height: u32, color: u8) {
+    pub fn draw_vline(&mut self, memory: *mut u8, x: i32, y: i32, height: u32, color: Color) {
         let (x, y) = self.camera.translate(x, y);
 
         if !self.draw_region.inside_height(y) {
@@ -138,9 +169,10 @@ impl GraphicsState {
         let (y, height, _) = self.draw_region.clamp_height(y, height);
 
         for i in 0..height {
+            let y = y + i as i32;
+            let color = self.get_fill_pattern_pixel(x as usize, y as usize, color);
             unsafe {
-                self.draw_region
-                    .set_pixel_unchecked(memory, x, y + i as i32, color);
+                self.draw_region.set_pixel_unchecked(memory, x, y, color);
             }
         }
     }
@@ -151,7 +183,7 @@ impl GraphicsState {
         y: i32,
         width: u32,
         height: u32,
-        color: u8,
+        color: Color,
     ) {
         self.draw_hline(memory, x, y, width, color);
         self.draw_vline(memory, x, y, height, color);
@@ -166,7 +198,7 @@ impl GraphicsState {
         y: i32,
         width: u32,
         height: u32,
-        color: u8,
+        color: Color,
     ) {
         let (_, ty) = self.camera.translate(x, y);
         let (_, height, offset) = self.draw_region.clamp_height(ty, height);
@@ -184,7 +216,7 @@ impl GraphicsState {
         width: u32,
         height: u32,
         radius: u32,
-        color: u8,
+        color: Color,
     ) {
         // Clamp radius to prevent visual glitches
         let radius = radius.min(width.min(height) / 2) as i32;
@@ -196,42 +228,26 @@ impl GraphicsState {
 
             // Top-left
             let (cx, cy) = (x + radius, y + radius);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - point_x, cy + point_y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + point_y, cy - point_x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - point_x, cy + point_y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + point_y, cy - point_x, color);
 
             // Top-right
             let (cx, cy) = (x + inner_width as i32 + radius, y + radius);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + point_x, cy + point_y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - point_y, cy - point_x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + point_x, cy + point_y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - point_y, cy - point_x, color);
 
             // Bottom-left
             let (cx, cy) = (x + radius, y + inner_height as i32 + radius);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - point_x, cy - point_y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + point_y, cy + point_x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - point_x, cy - point_y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + point_y, cy + point_x, color);
 
             // Bottom-right
             let (cx, cy) = (
                 x + inner_width as i32 + radius,
                 y + inner_height as i32 + radius,
             );
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + point_x, cy - point_y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - point_y, cy + point_x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + point_x, cy - point_y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - point_y, cy + point_x, color);
         });
 
         // Draw connecting lines
@@ -239,14 +255,14 @@ impl GraphicsState {
         self.draw_hline(
             memory,
             x + radius,
-            y + inner_height as i32 + radius,
+            y + inner_height as i32 + radius * 2,
             inner_width,
             color,
         );
         self.draw_vline(memory, x, y + radius, inner_height, color);
         self.draw_vline(
             memory,
-            x + inner_width as i32 + radius,
+            x + inner_width as i32 + radius * 2,
             y + radius,
             inner_height,
             color,
@@ -261,7 +277,7 @@ impl GraphicsState {
         width: u32,
         height: u32,
         radius: u32,
-        color: u8,
+        color: Color,
     ) {
         // Clamp radius to prevent visual glitches
         let radius = radius.min(width.min(height) / 2) as i32;
@@ -288,7 +304,7 @@ impl GraphicsState {
             graphics_state.draw_hline(memory, px, cy + point_x, line_width, color);
         });
 
-        self.draw_filled_rectangle(memory, x, y + radius, inner_width, inner_height, color);
+        self.draw_filled_rectangle(memory, x, y + radius, width, inner_height, color);
     }
 
     /// Encapsulates the logic for drawing the pixels on a circle.
@@ -314,34 +330,18 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_circle(&mut self, memory: *mut u8, cx: i32, cy: i32, radius: u32, color: u8) {
+    pub fn draw_circle(&mut self, memory: *mut u8, cx: i32, cy: i32, radius: u32, color: Color) {
         self.draw_circle_octant_points(radius, |graphics_state, x, y| {
             let (cx, cy) = graphics_state.camera.translate(cx, cy);
 
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + x, cy + y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - x, cy + y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + x, cy - y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - x, cy - y, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + y, cy + x, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - y, cy + x, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx + y, cy - x, color);
-            graphics_state
-                .draw_region
-                .set_pixel(memory, cx - y, cy - x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + x, cy + y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - x, cy + y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + x, cy - y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - x, cy - y, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + y, cy + x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - y, cy + x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx + y, cy - x, color);
+            graphics_state.draw_pixel_untranslated(memory, cx - y, cy - x, color);
         })
     }
 
@@ -351,7 +351,7 @@ impl GraphicsState {
         cx: i32,
         cy: i32,
         radius: u32,
-        color: u8,
+        color: Color,
     ) {
         self.draw_circle_octant_points(radius, |graphics_state, x, y| {
             // No need for transform, it's done by draw_hline
@@ -374,8 +374,8 @@ impl GraphicsState {
         cy: i32,
         x_radius: i32,
         y_radius: i32,
-        color: u8,
-        action: fn(&mut Self, *mut u8, i32, i32, i32, i32, u8),
+        color: Color,
+        action: fn(&mut Self, *mut u8, i32, i32, i32, i32, Color),
     ) {
         let mut x = 0;
         let mut y = y_radius;
@@ -435,7 +435,7 @@ impl GraphicsState {
         cy: i32,
         x_radius: u32,
         y_radius: u32,
-        color: u8,
+        color: Color,
     ) {
         self.draw_ellipse_quardrant_points(
             memory,
@@ -446,18 +446,10 @@ impl GraphicsState {
             color,
             |graphics_state, memory, cx, cy, x, y, color| {
                 let (cx, cy) = graphics_state.camera.translate(cx, cy);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx + x, cy + y, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx - x, cy + y, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx + x, cy - y, color);
-                graphics_state
-                    .draw_region
-                    .set_pixel(memory, cx - x, cy - y, color);
+                graphics_state.draw_pixel_untranslated(memory, cx + x, cy + y, color);
+                graphics_state.draw_pixel_untranslated(memory, cx - x, cy + y, color);
+                graphics_state.draw_pixel_untranslated(memory, cx + x, cy - y, color);
+                graphics_state.draw_pixel_untranslated(memory, cx - x, cy - y, color);
             },
         );
     }
@@ -469,7 +461,7 @@ impl GraphicsState {
         cy: i32,
         x_radius: u32,
         y_radius: u32,
-        color: u8,
+        color: Color,
     ) {
         self.draw_ellipse_quardrant_points(
             memory,
@@ -505,9 +497,9 @@ impl GraphicsState {
             y = 0;
         }
 
-        for i in line_y..spr_height {
-            let line = sprite_region.get_line(sprite, i as usize);
-            self.draw_line_bytes(memory, x, y, line);
+        for i in 0..spr_height {
+            let line = sprite_region.get_line(sprite, (line_y + i) as usize);
+            self.draw_line_bytes(memory, x, y + i as i32, line);
         }
     }
 
@@ -523,17 +515,17 @@ impl GraphicsState {
     }
 
     fn draw_line_bytes_untranslated(&mut self, memory: *mut u8, x: i32, y: i32, line: &[u8]) {
-        // TODO: needs testing
         let (x, width, offset) = self.draw_region.clamp_width(x, line.len() as u32);
 
         // SAFETY: the line's length is guarenteed to be within the drawing region
         unsafe {
             let line_destination = memory.add(self.draw_region.as_index(x, y));
-            copy_nonoverlapping(
-                line.as_ptr().add(offset as usize),
-                line_destination,
-                width as usize,
-            );
+            for i in 0..width as usize {
+                let pixel = *line.get_unchecked(i + offset as usize);
+                if pixel != self.transparency_color {
+                    line_destination.add(i).write(pixel);
+                }
+            }
         }
     }
 

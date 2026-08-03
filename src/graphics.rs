@@ -4,11 +4,12 @@
 // pixel graphics
 
 mod camera;
+mod color;
 mod draw_region;
 pub mod graphics_state;
 
 use crate::{
-    graphics::draw_region::DrawRegion,
+    graphics::{color::Color, draw_region::DrawRegion},
     kernel::{ProcessContext, ProcessLinker},
 };
 
@@ -69,7 +70,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
-                .draw_pixel_checked(draw_address, x, y, pixel as u8);
+                .draw_pixel_checked(draw_address, x, y, pixel as Color);
         },
     )?;
 
@@ -80,7 +81,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
-                .draw_line(draw_address, x1, y1, x2, y2, color as u8);
+                .draw_line(draw_address, x1, y1, x2, y2, color as Color);
         },
     )?;
 
@@ -130,7 +131,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
-                .draw_hline(draw_address, x, y, width, color as u8);
+                .draw_hline(draw_address, x, y, width, color as Color);
         },
     )?;
 
@@ -141,7 +142,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
-                .draw_vline(draw_address, x, y, height, color as u8);
+                .draw_vline(draw_address, x, y, height, color as Color);
         },
     )?;
 
@@ -156,7 +157,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 y,
                 width,
                 height,
-                color as u8,
+                color as Color,
             );
         },
     )?;
@@ -172,7 +173,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 y,
                 width,
                 height,
-                color as u8,
+                color as Color,
             );
         },
     )?;
@@ -195,7 +196,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 width,
                 height,
                 radius,
-                color as u8,
+                color as Color,
             );
         },
     )?;
@@ -218,7 +219,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 width,
                 height,
                 radius,
-                color as u8,
+                color as Color,
             );
         },
     )?;
@@ -230,7 +231,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             let draw_address = ctx.data().get_draw_address();
             ctx.data_mut()
                 .graphics_state
-                .draw_circle(draw_address, x, y, radius, color as u8);
+                .draw_circle(draw_address, x, y, radius, color as Color);
         },
     )?;
 
@@ -244,7 +245,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 x,
                 y,
                 radius,
-                color as u8,
+                color as Color,
             );
         },
     )?;
@@ -260,7 +261,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 y,
                 x_radius,
                 y_radius,
-                color as u8,
+                color as Color,
             );
         },
     )?;
@@ -276,7 +277,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 y,
                 x_radius,
                 y_radius,
-                color as u8,
+                color as Color,
             );
         },
     )?;

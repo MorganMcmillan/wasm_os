@@ -3,11 +3,10 @@ name = "wasm_os"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+
 [dependencies]
-app_dirs2 = "2.5.5"
 cap-std = "4.0.2"
-raylib = "6.0.0"
-rodio = "0.22.2"
 string-interner = "0.20.0"
 tokio = { version = "1.53.1", features = ["full"] }
 wasmtime = { version = "47.0.2" }

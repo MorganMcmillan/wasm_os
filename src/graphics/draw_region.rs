@@ -56,7 +56,7 @@ impl DrawRegion {
         let mut offset = 0;
         if x < 0 {
             offset = x.unsigned_abs();
-            width += offset;
+            width = width.saturating_sub(offset);
             x = 0;
         }
 
@@ -71,7 +71,7 @@ impl DrawRegion {
         let mut offset = 0;
         if y < 0 {
             offset = y.unsigned_abs();
-            height += offset;
+            height = height.saturating_sub(offset);
             y = 0;
         }
 

@@ -517,7 +517,7 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
 
     linker.func_wrap_async(
         "env",
-        "write_file",
+        "write_path",
         |mut ctx: ProcessContext<T>,
          (path_ptr, path_len, src_ptr, src_len): (i32, u32, i32, u32)| {
             Box::new(async move {

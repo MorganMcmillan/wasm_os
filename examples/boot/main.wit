@@ -1,6 +1,0 @@
-package component:my-package;
-
-world main {
-    export run: func() -> s32;
-    export set-color: func(length: u32);
-}
