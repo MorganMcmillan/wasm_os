@@ -11,6 +11,7 @@ use crate::async_file::AsyncFile;
 use crate::id::Id;
 use crate::kernel::{Kernel, Pid, ProcessContext};
 use crate::process::Process;
+use crate::ptr_cell::PtrCell;
 
 const EVENT_HANDLER_NOT_FOUND: &str = "Could not get event handler.\nIt's possible your program was not compiled with wasm-ld having the `--export-table` flag.";
 
@@ -235,22 +236,16 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
         },
     )?;
 
-    // TODO: create some generic mechanism for getting the size of Rust-owned strings, and then reading them using a single function
     linker.func_wrap(
         "env",
-        "read_event_name",
-        |ctx: ProcessContext<T>, symbol: u32, buf_ptr: i32, buf_len: u32| -> i32 {
+        "prepare_event_name",
+        |mut ctx: ProcessContext<T>, symbol: u32| -> i32 {
             let Some(symbol) = SymbolU32::try_from_usize(symbol as usize) else {
                 return -1;
             };
 
             let event_name = ctx.data().kernel.get_event_name(symbol);
-            let mut buffer = get_memory(&ctx, buf_ptr, buf_len);
-
-            buffer
-                .write(event_name.as_bytes())
-                .map(|b| b as i32)
-                .unwrap_or(-1)
+            ctx.data_mut().set_data(event_name.as_bytes()) as i32
         },
     )?;
 
@@ -300,22 +295,11 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
 
     linker.func_wrap(
         "env",
-        "get_process_label",
-        |ctx: ProcessContext<T>, buf_ptr: i32, buf_len: u32| -> i32 {
-            let label = &ctx.data().label;
-            let bytes = label.as_bytes();
-            if bytes.len() > buf_len as usize {
-                return 0;
-            }
-
-            ctx.data()
-                .kernel
-                .borrow_static()
-                .get_process_mut(ctx.data().pid)
-                .unwrap()
-                .set_memory(buf_ptr as usize, bytes);
-
-            bytes.len() as i32
+        "prepare_process_label",
+        |mut ctx: ProcessContext<T>| -> i32 {
+            let mut ctx_cell = PtrCell::new(&mut ctx);
+            let label = ctx.data().label.as_bytes();
+            ctx_cell.get_mut().data_mut().set_data(label) as i32
         },
     )?;
 
@@ -329,6 +313,21 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
             };
 
             ctx.data().kernel.get_pid_by_name(name).as_i32()
+        },
+    )?;
+
+    // Data
+
+    linker.func_wrap("env", "get_data_length", |ctx: ProcessContext<T>| -> u32 {
+        ctx.data().byte_data.len() as u32
+    })?;
+
+    linker.func_wrap(
+        "env",
+        "read_data",
+        |ctx: ProcessContext<T>, buf_ptr: i32, buf_len: u32| {
+            let mut buf = get_memory(&ctx, buf_ptr, buf_len);
+            let _ = buf.write_all(&ctx.data().byte_data);
         },
     )?;
 
@@ -452,6 +451,26 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
                     Ok(bytes) => bytes as i32,
                     Err(_) => -1,
                 }
+            })
+        },
+    )?;
+
+    linker.func_wrap_async(
+        "env",
+        "prepare_file_contents",
+        |mut ctx: ProcessContext<T>, (fd,): (i32,)| {
+            Box::new(async move {
+                let Some(file) = ctx.data_mut().get_file(Id::from_i32(fd)) else {
+                    return -2;
+                };
+
+                let mut contents = Vec::with_capacity(64);
+
+                if file.read_to_end(&mut contents).await.is_err() {
+                    return -1;
+                };
+
+                ctx.data_mut().set_data(&contents) as i32
             })
         },
     )?;

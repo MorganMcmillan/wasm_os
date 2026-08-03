@@ -55,6 +55,15 @@ impl AsyncFile {
         }
     }
 
+    pub async fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize, FileError> {
+        match self {
+            Self::Null => Ok(0),
+            Self::Stdin(stdin) => stdin.read_to_end(buf).await.map_err(get_error),
+            Self::File(file) => file.read_to_end(buf).await.map_err(get_error),
+            _ => Err(FileError::CannotRead),
+        }
+    }
+
     pub async fn write(&mut self, src: &[u8]) -> Result<usize, FileError> {
         match self {
             Self::Null => Ok(src.len()),

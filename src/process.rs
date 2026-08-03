@@ -45,6 +45,7 @@ pub struct Process<T: 'static> {
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
     pub default_event_handler: Option<wasmtime::TypedFunc<(i32, i32), ()>>,
+    pub byte_data: Vec<u8>,
     pub graphics_state: GraphicsState,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
@@ -79,6 +80,7 @@ impl<T> Process<T> {
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             default_event_handler: None,
+            byte_data: Vec::with_capacity(256),
             graphics_state: GraphicsState::new(),
             driver_states: HashMap::new(),
         }
@@ -280,6 +282,14 @@ impl<T> Process<T> {
 
     pub fn set_default_handler(&mut self, handler: wasmtime::TypedFunc<(i32, i32), ()>) {
         self.default_event_handler = Some(handler);
+    }
+
+    // Data
+
+    pub fn set_data(&mut self, data: &[u8]) -> usize {
+        self.byte_data.clear();
+        self.byte_data.extend_from_slice(data);
+        self.byte_data.len()
     }
 
     // Drivers
