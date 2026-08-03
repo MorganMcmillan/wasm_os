@@ -1,6 +1,8 @@
 use std::io::{Write, stdout};
 use std::time::Duration;
 
+use string_interner::Symbol;
+use string_interner::symbol::SymbolU32;
 use tokio::task::yield_now;
 use tokio::time::sleep;
 use wasmtime::Linker;
@@ -205,6 +207,42 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
 
             ctx.data_mut().remove_event_handler(interned_name);
             0
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "set_default_handler",
+        |mut ctx: ProcessContext<T>, handler_index: i32| -> i32 {
+            let handler = ctx
+                .data()
+                .as_wasm_process()
+                .get_exported_function(handler_index)
+                .expect(EVENT_HANDLER_NOT_FOUND)
+                .typed::<(i32, i32), ()>(&ctx)
+                .unwrap();
+
+            ctx.data_mut().set_default_handler(handler);
+            0
+        },
+    )?;
+
+    // TODO: create some generic mechanism for getting the size of Rust-owned strings, and then reading them using a single function
+    linker.func_wrap(
+        "env",
+        "read_event_name",
+        |ctx: ProcessContext<T>, symbol: u32, buf_ptr: i32, buf_len: u32| -> i32 {
+            let Some(symbol) = SymbolU32::try_from_usize(symbol as usize) else {
+                return -1;
+            };
+
+            let event_name = ctx.data().kernel.get_event_name(symbol);
+            let mut buffer = get_memory(&ctx, buf_ptr, buf_len);
+
+            buffer
+                .write(event_name.as_bytes())
+                .map(|b| b as i32)
+                .unwrap_or(-1)
         },
     )?;
 

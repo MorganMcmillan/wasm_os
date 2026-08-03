@@ -43,6 +43,7 @@ pub struct Process<T: 'static> {
     pub children: Vec<Pid>,
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
+    pub default_event_handler: Option<wasmtime::TypedFunc<(i32, i32), ()>>,
     pub graphics_state: GraphicsState,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
@@ -75,6 +76,7 @@ impl<T> Process<T> {
             children: Vec::new(),
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
+            default_event_handler: None,
             graphics_state: GraphicsState::new(),
             driver_states: HashMap::new(),
         }
@@ -255,6 +257,10 @@ impl<T> Process<T> {
 
     pub fn remove_event_handler(&mut self, name: SymbolU32) {
         self.event_handlers.remove(&name);
+    }
+
+    pub fn set_default_handler(&mut self, handler: wasmtime::TypedFunc<(i32, i32), ()>) {
+        self.default_event_handler = Some(handler);
     }
 
     // Drivers
