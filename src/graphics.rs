@@ -364,14 +364,20 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "draw_text",
-        |mut ctx: ProcessContext<T>, text_ptr: i32, text_len: u32, fg: u32, bg: u32| {
+        |mut ctx: ProcessContext<T>,
+         text_ptr: i32,
+         text_len: u32,
+         x: i32,
+         y: i32,
+         fg: u32,
+         bg: u32| {
             let draw_address = ctx.data().get_draw_address();
 
             let text = ctx.data().get_memory(text_ptr as usize, text_len as usize);
 
             ctx.data_mut()
                 .graphics_state
-                .draw_text(draw_address, text, fg as u8, bg as u8);
+                .draw_text(draw_address, text, x, y, fg as u8, bg as u8);
         },
     )?;
 

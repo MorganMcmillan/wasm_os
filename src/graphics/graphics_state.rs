@@ -519,6 +519,10 @@ impl GraphicsState {
             return;
         }
 
+        self.draw_line_bytes_untranslated(memory, x, y, line);
+    }
+
+    fn draw_line_bytes_untranslated(&mut self, memory: *mut u8, x: i32, y: i32, line: &[u8]) {
         // TODO: needs testing
         let (x, width, offset) = self.draw_region.clamp_width(x, line.len() as u32);
 
@@ -535,28 +539,61 @@ impl GraphicsState {
 
     pub fn draw_map(
         &mut self,
-        memory: *mut u8,
-        map: *const u8,
-        map_width: usize,
-        map_height: usize,
-        spritesheet: *const u8,
-        spr_width: u32,
-        spr_height: u32,
+        _memory: *mut u8,
+        _map: *const u8,
+        _map_width: usize,
+        _map_height: usize,
+        _spritesheet: *const u8,
+        _spr_width: u32,
+        _spr_height: u32,
     ) {
+        // TODO: do much later
         todo!()
     }
 
-    pub fn draw_text(&mut self, memory: *mut u8, text: &[u8], fg: u8, bg: u8) {
-        todo!()
+    pub fn draw_text(&mut self, memory: *mut u8, text: &[u8], x: i32, y: i32, fg: u8, bg: u8) {
+        let (mut x, mut y) = self.camera.translate(x, y);
+        let start_x = x;
+
+        for &character in text {
+            if !self.draw_region.inside_height(y) {
+                break;
+            }
+
+            if !self.draw_region.inside_width(x) || character == b'\n' {
+                x = start_x;
+                y += 8;
+            } else {
+                self.draw_character_untranslated(memory, character, x, y, fg, bg);
+                x += 8;
+            }
+        }
+    }
+
+    /// Draws a character to the exact screen coordinates
+    fn draw_character_untranslated(
+        &mut self,
+        memory: *mut u8,
+        character: u8,
+        x: i32,
+        y: i32,
+        fg: u8,
+        bg: u8,
+    ) {
+        let character = character as usize;
+        for i in 0..8 {
+            let line = byte_to_8_bytes(self.font[character * 8 + i], fg, bg);
+            self.draw_line_bytes_untranslated(memory, x, y + i as i32, &line);
+        }
     }
 }
 
 fn byte_to_8_bytes(byte: u8, one_value: u8, zero_value: u8) -> [u8; 8] {
     let mut bytes = [0; 8];
 
-    for i in 0usize..8 {
+    for (i, out_byte) in bytes.iter_mut().enumerate() {
         let bit = (byte >> i) & 1;
-        bytes[i] = if bit == 1 { one_value } else { zero_value }
+        *out_byte = if bit == 1 { one_value } else { zero_value }
     }
 
     bytes
