@@ -48,6 +48,14 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
         ctx.data().parent_pid.as_i32()
     })?;
 
+    linker.func_wrap("env", "iter_children", |mut ctx: ProcessContext<T>| {
+        ctx.data_mut().iter_children();
+    })?;
+
+    linker.func_wrap("env", "next_child", |mut ctx: ProcessContext<T>| -> i32 {
+        ctx.data_mut().next_child().as_i32()
+    })?;
+
     // Return Pid
     linker.func_wrap_async(
         "env",

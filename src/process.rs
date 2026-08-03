@@ -41,6 +41,7 @@ pub struct Process<T: 'static> {
     /// The return value of the process
     pub exit_code: Option<u16>,
     pub children: Vec<Pid>,
+    pub child_iter_index: Option<u32>,
     pub event_queue: Vec<Event>,
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
     pub default_event_handler: Option<wasmtime::TypedFunc<(i32, i32), ()>>,
@@ -74,6 +75,7 @@ impl<T> Process<T> {
             join_handle: None,
             exit_code: None,
             children: Vec::new(),
+            child_iter_index: None,
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             default_event_handler: None,
@@ -88,6 +90,23 @@ impl<T> Process<T> {
 
     pub fn add_child(&mut self, pid: Pid) {
         self.children.push(pid);
+    }
+
+    pub fn iter_children(&mut self) {
+        self.child_iter_index = Some(0);
+    }
+
+    pub fn next_child(&mut self) -> Pid {
+        if let Some(index) = &mut self.child_iter_index {
+            if let Some(child) = self.children.get(*index as usize) {
+                *child
+            } else {
+                self.child_iter_index = None;
+                Pid::default()
+            }
+        } else {
+            Pid::default()
+        }
     }
 
     pub fn set_join_handle(&mut self, join_handle: JoinHandle<i32>) {
