@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::task::JoinHandle;
 
 use string_interner::symbol::SymbolU32;
@@ -15,7 +15,7 @@ use crate::async_file::AsyncFile;
 use crate::event::Event;
 use crate::graphics::graphics_state::GraphicsState;
 use crate::id::{Id, IdStore};
-use crate::kernel::{Kernel, Pid};
+use crate::kernel::{FILE_CREATE, FILE_WRITE, Kernel, Pid};
 use crate::mut_cell::MutCell;
 use crate::wasm_process::WasmProcess;
 
@@ -204,6 +204,21 @@ impl<T> Process<T> {
         file.read_to_end(&mut contents).await?;
 
         Ok(contents)
+    }
+
+    pub async fn write_entire_file(
+        &mut self,
+        path: impl AsRef<Path>,
+        contents: &[u8],
+    ) -> io::Result<()> {
+        let path = self.get_absolute_path(path.as_ref());
+
+        let mut file = self
+            .kernel
+            .borrow_static()
+            .open_async_file(&path, FILE_WRITE | FILE_CREATE)?;
+
+        file.write_all(contents).await
     }
 
     fn set_current_directory(&mut self, path: &Path) -> i32 {

@@ -516,6 +516,28 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
 
     linker.func_wrap_async(
         "env",
+        "write_file",
+        |mut ctx: ProcessContext<T>,
+         (path_ptr, path_len, src_ptr, src_len): (i32, u32, i32, u32)| {
+            Box::new(async move {
+                let path = match get_str(&ctx, path_ptr, path_len) {
+                    Ok(p) => p,
+                    Err(e) => return e,
+                };
+
+                let src = get_memory(&ctx, src_ptr, src_len);
+
+                if ctx.data_mut().write_entire_file(path, src).await.is_ok() {
+                    0
+                } else {
+                    -1
+                }
+            })
+        },
+    )?;
+
+    linker.func_wrap_async(
+        "env",
         "seek",
         |mut ctx: ProcessContext<T>, (fd, offset, from): (i32, i32, i32)| {
             Box::new(async move {

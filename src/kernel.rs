@@ -36,6 +36,11 @@ pub type ProcessContext<'a, T> = Caller<'a, Process<T>>;
 
 pub const ROOT_PID: Pid = Id::new(1);
 
+pub const FILE_WRITE: u8 = 0b1;
+pub const FILE_APPEND: u8 = 0b10;
+pub const FILE_CREATE: u8 = 0b100;
+pub const FILE_TRUNCATE: u8 = 0b1000;
+
 #[derive(Debug)]
 pub enum CreateProcessError {
     FileNotFound,
@@ -226,24 +231,19 @@ impl<T: 'static> Kernel<T> {
         path: impl AsRef<Path>,
         mode: u8,
     ) -> Result<tokio::fs::File, io::Error> {
-        const OPTION_WRITE: u8 = 0b1;
-        const OPTION_APPEND: u8 = 0b10;
-        const OPTION_CREATE: u8 = 0b100;
-        const OPTION_TRUNCATE: u8 = 0b1000;
-
         let mut options = OpenOptions::new();
-        if mode & OPTION_WRITE != 0 {
+        if mode & FILE_WRITE != 0 {
             options.write(true);
         } else {
             options.read(true);
         }
-        if mode & OPTION_APPEND != 0 {
+        if mode & FILE_APPEND != 0 {
             options.append(true);
         }
-        if mode & OPTION_CREATE != 0 {
+        if mode & FILE_CREATE != 0 {
             options.create(true);
         }
-        if mode & OPTION_TRUNCATE != 0 {
+        if mode & FILE_TRUNCATE != 0 {
             options.truncate(true);
         }
 
