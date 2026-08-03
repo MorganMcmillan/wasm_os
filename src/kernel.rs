@@ -12,6 +12,7 @@ use std::time::Duration;
 use cap_std::ambient_authority;
 use cap_std::fs::MetadataExt;
 use cap_std::fs::OpenOptions;
+use cap_std::fs::ReadDir;
 use cap_std::time::SystemTime;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
@@ -284,6 +285,10 @@ impl<T: 'static> Kernel<T> {
 
     pub fn create_directory(&self, path: impl AsRef<Path>) -> io::Result<()> {
         self.ambient_dir.create_dir(path)
+    }
+
+    pub fn read_directory(&self, path: impl AsRef<Path>) -> io::Result<ReadDir> {
+        self.ambient_dir.read_dir(path)
     }
 
     #[allow(unused)]

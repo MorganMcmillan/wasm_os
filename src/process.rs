@@ -38,6 +38,7 @@ pub struct Process<T: 'static> {
     /// Stdout: (2, 0),
     /// Stderr: (3, 0)
     pub open_files: IdStore<AsyncFile>,
+    pub directory_iterators: IdStore<cap_std::fs::ReadDir>,
     /// Can be awaited to end the process early
     pub join_handle: Option<JoinHandle<i32>>,
     /// The return value of the process
@@ -75,6 +76,7 @@ impl<T> Process<T> {
             current_working_directory,
             memory_export: None,
             open_files,
+            directory_iterators: IdStore::new(),
             join_handle: None,
             exit_code: None,
             children: Vec::new(),
@@ -293,6 +295,14 @@ impl<T> Process<T> {
 
     pub fn get_file(&mut self, fd: Id) -> Option<&mut AsyncFile> {
         self.open_files.data_mut(fd)
+    }
+
+    pub fn iter_directory(&mut self, path: impl AsRef<Path>) -> Id {
+        let Ok(iter) = self.kernel.read_directory(path) else {
+            return Id::default();
+        };
+
+        self.directory_iterators.new_id(iter)
     }
 
     // Events

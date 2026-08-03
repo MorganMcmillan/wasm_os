@@ -1,4 +1,5 @@
 use std::io::{Write, stdout};
+use std::os::unix::ffi::OsStrExt;
 use std::time::Duration;
 
 use string_interner::Symbol;
@@ -645,6 +646,63 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
             };
 
             ctx.data_mut().create_directory(path)
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "read_dir",
+        |mut ctx: ProcessContext<T>, path_ptr: i32, path_len: u32| -> i32 {
+            let path = match get_str(&ctx, path_ptr, path_len) {
+                Ok(f) => f,
+                Err(e) => return e,
+            };
+
+            ctx.data_mut().iter_directory(path).as_i32()
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "prepare_dir_entry",
+        |mut ctx: ProcessContext<T>, dir_id: i32| -> i32 {
+            let mut ctx_cell = PtrCell::new(&mut ctx);
+            let dir_id = Id::from_i32(dir_id);
+            let Some(dir_iter) = ctx_cell
+                .get_mut()
+                .data_mut()
+                .directory_iterators
+                .data_mut(dir_id)
+            else {
+                return 0;
+            };
+
+            fn try_next<T>(
+                process: &mut Process<T>,
+                dir_iter: &mut cap_std::fs::ReadDir,
+                dir_id: Id,
+            ) -> i32 {
+                match dir_iter.next() {
+                    Some(Ok(entry)) => process.set_data(entry.file_name().as_bytes()) as i32,
+                    Some(Err(_)) => try_next(process, dir_iter, dir_id),
+                    None => {
+                        process.directory_iterators.delete_id(dir_id);
+                        0
+                    }
+                }
+            }
+
+            try_next(ctx.data_mut(), dir_iter, dir_id)
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "close_dir",
+        |mut ctx: ProcessContext<T>, dir_id: i32| {
+            ctx.data_mut()
+                .directory_iterators
+                .delete_id(Id::from_i32(dir_id));
         },
     )?;
 
