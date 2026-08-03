@@ -9,7 +9,7 @@ mod draw_region;
 pub mod graphics_state;
 
 use crate::{
-    graphics::{color::Color, draw_region::DrawRegion},
+    graphics::{color::Color, draw_region::DrawRegion, graphics_state::FONT_SIZE},
     kernel::{ProcessContext, ProcessLinker},
 };
 
@@ -62,6 +62,30 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap("env", "get_camera_y", |mut ctx: ProcessContext<T>| -> i32 {
         ctx.data_mut().graphics_state.camera.y
     })?;
+
+    linker.func_wrap(
+        "env",
+        "set_font",
+        |mut ctx: ProcessContext<T>, font: i32| {
+            ctx.data_mut().graphics_state.font = ctx
+                .data()
+                .get_memory(font as usize, FONT_SIZE)
+                .try_into()
+                .unwrap();
+        },
+    )?;
+
+    linker.func_wrap("env", "use_default_font", |mut ctx: ProcessContext<T>| {
+        ctx.data_mut().graphics_state.use_default_font();
+    })?;
+
+    linker.func_wrap(
+        "env",
+        "set_fill_pattern",
+        |mut ctx: ProcessContext<T>, pattern: u64| {
+            ctx.data_mut().graphics_state.set_fill_pattern(pattern);
+        },
+    )?;
 
     linker.func_wrap(
         "env",
@@ -348,19 +372,6 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             );
         },
     )?;
-
-    linker.func_wrap(
-        "env",
-        "set_font",
-        |mut ctx: ProcessContext<T>, font_ptr: i32| {
-            let font = ctx.data().get_memory(font_ptr as usize, 256 * 8).as_ptr();
-            ctx.data_mut().graphics_state.set_font(font);
-        },
-    )?;
-
-    linker.func_wrap("env", "use_default_font", |mut ctx: ProcessContext<T>| {
-        ctx.data_mut().graphics_state.use_default_font();
-    })?;
 
     linker.func_wrap(
         "env",

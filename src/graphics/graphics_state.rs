@@ -4,7 +4,7 @@ use crate::graphics::{
     draw_region::DrawRegion,
 };
 
-const FONT_SIZE: usize = 8 * 256;
+pub const FONT_SIZE: usize = 8 * 256;
 // TODO: create a default font file using some kind of bitmap drawing program.
 const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
 
@@ -51,7 +51,7 @@ impl GraphicsState {
     /// Gets the fill pattern line for any y coordinate in the draw region.
     fn get_fill_pattern_line(&self, y: usize, color: Color) -> [u8; 8] {
         let (fg, bg) = color::split_color(color);
-        byte_to_8_bytes(self.fill_pattern[y % 8], fg, bg)
+        byte_to_8_bytes(self.fill_pattern[y % 8], bg, fg)
     }
 
     fn get_fill_pattern_pixel(&self, x: usize, y: usize, color: Color) -> u8 {
