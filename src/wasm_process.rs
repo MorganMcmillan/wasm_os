@@ -224,4 +224,12 @@ impl<T> WasmProcess<T> {
             }
         }
     }
+
+    pub fn get_exported_function(&mut self, handler_index: i32) -> Option<wasmtime::Func> {
+        self.instance
+            .get_table(&mut self.store, "__indirect_function_table")
+            .or_else(|| self.instance.get_table(&mut self.store, "table"))
+            .and_then(|table| table.get(&mut self.store, handler_index as u64))
+            .and_then(|val| val.as_func().flatten().copied())
+    }
 }

@@ -10,6 +10,8 @@ use crate::id::Id;
 use crate::kernel::{Kernel, Pid, ProcessContext};
 use crate::process::Process;
 
+const EVENT_HANDLER_NOT_FOUND: &str = "Could not get event handler.\nIt's possible your program was not compiled with wasm-ld having the `--export-table` flag.";
+
 // Convenience wrapper to help with casting wasm types.
 pub fn get_memory<T>(ctx: &ProcessContext<T>, mem_ptr: i32, mem_len: u32) -> &'static mut [u8] {
     ctx.data().get_memory(mem_ptr as usize, mem_len as usize)
@@ -171,7 +173,7 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "add_event_handler",
-        |mut ctx: ProcessContext<T>, name_ptr: i32, name_len: u32| -> i32 {
+        |mut ctx: ProcessContext<T>, name_ptr: i32, name_len: u32, handler_index: i32| -> i32 {
             let name = match get_str(&ctx, name_ptr, name_len) {
                 Ok(n) => n,
                 Err(e) => return e,
@@ -179,10 +181,10 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
             let interned_name = ctx.data().kernel.borrow_static().intern_event_name(name);
 
             let handler = ctx
-                .get_export(name)
-                .unwrap()
-                .into_func()
-                .unwrap()
+                .data()
+                .as_wasm_process()
+                .get_exported_function(handler_index)
+                .expect(EVENT_HANDLER_NOT_FOUND)
                 .typed::<i32, ()>(&ctx)
                 .unwrap();
 
