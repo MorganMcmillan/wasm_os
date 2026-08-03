@@ -11,7 +11,7 @@ use wasmtime::ModuleExport;
 
 use crate::async_file::AsyncFile;
 use crate::event::Event;
-use crate::graphics::GraphicsState;
+use crate::graphics::graphics_state::GraphicsState;
 use crate::id::{Id, IdStore};
 use crate::kernel::{Kernel, Pid};
 use crate::mut_cell::MutCell;
