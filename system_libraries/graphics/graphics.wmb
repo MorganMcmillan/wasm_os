@@ -1,0 +1,25 @@
+mod env
+
+set_draw_region(buffer *u8, width u32, height u32)
+clear_draw_region(color u8)
+set_transparency_color(color u8) u8
+set_camera(x i32, y i32)
+get_camera_x() i32
+get_camera_y() i32
+set_font(font *u8)
+use_default_font()
+draw_pixel(x i32, y i32, color u8)
+draw_hline(x i32, y i32, width u32, color u8)
+draw_vline(x i32, y i32, height u32, color u8)
+draw_line(x1 i32, y1 i32, x2 i32, y2 i32, color u8)
+draw_textured_line(x1 i32, y1 i32, x2 i32, y2 i32, texture *u8, tex_width u32, tex_height u32, tex_x f32, tex_y f32, tex_dx f32, tex_dy f32)
+draw_rectangle(x i32, y i32, width u32, height u32, color u8)
+draw_filled_rectangle(x i32, y i32, width u32, height u32, color u8)
+draw_rounded_rectangle(x i32, y i32, width u32, height u32, radius u32, color u8)
+draw_filled_rounded_rectangle(x i32, y i32, width u32, height u32, radius u32, color u8)
+draw_circle(x i32, y i32, radius u32, color u8)
+draw_filled_circle(x i32, y i32, radius u32, color u8)
+draw_ellipse(x i32, y i32, x_radius u32, y_radius u32, color u8)
+draw_filled_ellipse(x i32, y i32, x_radius u32, y_radius u32, color u8)
+draw_sprite(x i32, y i32, sprite *const u8, spr_width u32, spr_height u32)
+draw_text(text []u8, color u8)

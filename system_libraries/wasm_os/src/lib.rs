@@ -5,6 +5,7 @@ pub const FILE_TRUNCATE: u8 = 0b1000;
 
 #[link(wasm_import_module = "env")]
 unsafe extern "C" {
+    #[link_name = "debug_print"]
     fn extern_debug_print(str_ptr: *const u8, str_len: i32) -> i32;
 
     #[link_name = "get_pid"]
