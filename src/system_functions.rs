@@ -320,15 +320,17 @@ pub fn load_system_functions<T>(linker: &mut Linker<Process<T>>) -> wasmtime::Re
     // Data
 
     linker.func_wrap("env", "get_data_length", |ctx: ProcessContext<T>| -> u32 {
-        ctx.data().byte_data.len() as u32
+        ctx.data().byte_data.as_ref().map(|d| d.len()).unwrap_or(0) as u32
     })?;
 
     linker.func_wrap(
         "env",
         "read_data",
         |ctx: ProcessContext<T>, buf_ptr: i32, buf_len: u32| {
-            let mut buf = get_memory(&ctx, buf_ptr, buf_len);
-            let _ = buf.write_all(&ctx.data().byte_data);
+            if let Some(data) = ctx.data().byte_data.as_ref() {
+                let mut buf = get_memory(&ctx, buf_ptr, buf_len);
+                let _ = buf.write_all(data);
+            }
         },
     )?;
 

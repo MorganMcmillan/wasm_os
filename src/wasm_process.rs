@@ -54,7 +54,7 @@ pub struct WasmProcess<T: 'static> {
 // Returns the names of imported drivers and libraries.
 fn get_imported_modules(module: &Module) -> (Vec<&str>, Vec<&str>) {
     let mut modules = module.imports().map(|i| i.module()).collect::<HashSet<_>>();
-    // Ignore as it's given my the kernel's functions, and not a driver or library.
+    // Ignore as it's given by the kernel's functions, and not a driver or library.
     modules.remove("env");
     modules.into_iter().partition(|m| m.starts_with("driver_"))
 }
@@ -147,7 +147,9 @@ impl<T> WasmProcess<T> {
         let mut main_loop = Box::pin(run.call_async(&mut self.store, ()));
 
         loop {
+            self_cell.get_mut().store.set_epoch_deadline(1);
             self_cell.get_mut().process_queue().await;
+            self_cell.get_mut().store.set_epoch_deadline(1);
 
             let poll_result =
                 Future::poll(main_loop.as_mut(), &mut Context::from_waker(Waker::noop()));
@@ -183,7 +185,6 @@ impl<T> WasmProcess<T> {
                     return code;
                 }
                 Pending => {
-                    self_cell.get_mut().store.set_epoch_deadline(1);
                     yield_now().await;
                 }
             }
@@ -191,12 +192,16 @@ impl<T> WasmProcess<T> {
     }
 
     async fn process_queue(&mut self) {
+        let previous_data = self.store.data_mut().byte_data.take();
+
         let mut old_event_queue = Vec::new();
         std::mem::swap(&mut old_event_queue, &mut self.store.data_mut().event_queue);
 
         for event in old_event_queue {
             self.process_event(event).await;
         }
+
+        self.store.data_mut().byte_data = previous_data;
     }
 
     async fn process_event(&mut self, mut event: Event) {
