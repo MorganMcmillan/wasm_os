@@ -222,7 +222,7 @@ impl<T: 'static> Kernel<T> {
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
 
-        let cwd = if parent.number() == 0 {
+        let cwd = if parent.index() == 0 {
             PathBuf::new()
         } else {
             kernel
@@ -234,7 +234,29 @@ impl<T: 'static> Kernel<T> {
                 .clone()
         };
 
-        let mut process = Process::new(kernel, parent, args, label, cwd, stdin, stdout, stderr);
+        let environment = if parent.index() == 0 {
+            HashMap::new()
+        } else {
+            kernel
+                .get_process(parent)
+                .unwrap()
+                .store
+                .data()
+                .environment
+                .clone()
+        };
+
+        let mut process = Process::new(
+            kernel,
+            parent,
+            args,
+            environment,
+            label,
+            cwd,
+            stdin,
+            stdout,
+            stderr,
+        );
 
         for (id, driver) in kernel.borrow_static().drivers.iter_mut().enumerate() {
             if let Some(process_state) = driver.create_process_state() {
@@ -261,7 +283,7 @@ impl<T: 'static> Kernel<T> {
             .set_pid(pid);
 
         // If not root process:
-        if parent.number() != 0 {
+        if parent.index() != 0 {
             kernel
                 .borrow_static()
                 .get_process_mut(parent)

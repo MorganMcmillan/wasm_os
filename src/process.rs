@@ -24,6 +24,8 @@ use crate::{
     wasm_process::WasmProcess,
 };
 
+type Environment = HashMap<Box<[u8]>, Box<[u8]>>;
+
 /// A process represents the state of a running Webassembly process.
 /// This is just the data associated with it.
 /// It is used in system functions.
@@ -35,7 +37,9 @@ pub struct Process<T: 'static> {
     /// The parent process' id
     pub parent_pid: Pid,
     /// The list of arguments given to the process
-    pub(crate) args: Box<[Box<[u8]>]>,
+    pub args: Box<[Box<[u8]>]>,
+    /// The process' environment
+    pub environment: Environment,
     /// The label is this process' file name without the extension
     pub label: Box<str>,
     /// The directory for which files are opened relative to
@@ -76,6 +80,7 @@ impl<T> Process<T> {
         kernel: &'static MutCell<Kernel<T>>,
         parent_pid: Pid,
         args: Box<[Box<[u8]>]>,
+        environment: Environment,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
         stdin: AsyncFile,
@@ -92,6 +97,7 @@ impl<T> Process<T> {
             pid: Id::new(0),
             parent_pid,
             args,
+            environment,
             label: label.into(),
             current_working_directory,
             memory_export: None,
@@ -145,6 +151,26 @@ impl<T> Process<T> {
     pub fn prepare_arg(&mut self, index: u16) -> usize {
         let self_cell = PtrCell::new(self);
         self.set_data(&self_cell.get().args[index as usize])
+    }
+
+    pub fn prepare_env(&mut self, key: &[u8]) -> usize {
+        let self_cell = PtrCell::new(self);
+        if let Some(value) = self_cell.get().environment.get(key) {
+            self.set_data(value)
+        } else {
+            0
+        }
+    }
+
+    pub fn set_env(&mut self, key: &[u8], value: &[u8]) {
+        self.environment.insert(
+            key.to_owned().into_boxed_slice(),
+            value.to_owned().into_boxed_slice(),
+        );
+    }
+
+    pub fn delete_env(&mut self, key: &[u8]) -> bool {
+        self.environment.remove(key).is_some()
     }
 
     pub async fn kill(&mut self) {
