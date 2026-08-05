@@ -118,7 +118,7 @@ impl GraphicsState {
 
     fn process_color(&self, draw_address: *mut u8, x: usize, y: usize, color: Color) -> Pixel {
         let pixel = self.get_fill_pattern_line(y, color)[x % 8];
-        self.apply_color_math(draw_address, x, y, pixel);
+        self.apply_color_math(draw_address, x, y, pixel)
     }
 
     fn apply_color_math(&self, draw_address: *mut u8, x: usize, y: usize, pixel: Pixel) -> Pixel {
@@ -193,7 +193,7 @@ impl GraphicsState {
     // Drawing
 
     pub fn draw_pixel_untranslated(&mut self, draw_address: *mut u8, x: i32, y: i32, color: Color) {
-        let color = self.process_color(x as usize, y as usize, color);
+        let color = self.process_color(draw_address, x as usize, y as usize, color);
         self.draw_region.set_pixel(draw_address, x, y, color);
     }
 
@@ -294,7 +294,7 @@ impl GraphicsState {
             // SAFETY: x is positive and if it goes out of bounds, then width is 0.
             let destination = draw_address.add(index);
             for i in 0..width as usize {
-                let pixel = self.process_color(x as usize + i, y as usize, color);
+                let pixel = self.process_color(draw_address, x as usize + i, y as usize, color);
                 destination.add(i).write(pixel);
             }
         }
@@ -311,7 +311,7 @@ impl GraphicsState {
 
         for i in 0..height {
             let y = y + i as i32;
-            let color = self.process_color(x as usize, y as usize, color);
+            let color = self.process_color(draw_address, x as usize, y as usize, color);
             unsafe {
                 self.draw_region
                     .set_pixel_unchecked(draw_address, x, y, color);
@@ -707,12 +707,15 @@ impl GraphicsState {
             {
                 for i in 0..width as usize {
                     let pixel = *line.get_unchecked(i + offset as usize);
+
                     if let Some(pixel) = self.get_fill_pattern_sprite_pixel(
                         memory.as_ptr(),
                         x as usize + i,
                         y as usize,
                         pixel,
                     ) {
+                        let pixel =
+                            self.apply_color_math(draw_address, x as usize + i, y as usize, pixel);
                         line_destination.add(i).write(pixel);
                     }
                 }
@@ -727,17 +730,19 @@ impl GraphicsState {
         }
     }
 
+    #[allow(unused)]
     pub fn draw_map(
         &mut self,
-        _draw_address: *mut u8,
-        _map: *const u8,
-        _map_width: usize,
-        _map_height: usize,
-        _spritesheet: *const u8,
-        _spr_width: u32,
-        _spr_height: u32,
+        draw_address: *mut u8,
+        map: *const u8,
+        map_width: usize,
+        map_height: usize,
+        spritesheet: *const u8,
+        spr_width: u32,
+        spr_height: u32,
     ) {
-        // TODO: do much later
+        // TODO: do much later.
+        // Implement using `draw_sprite` to reuse functionality
         todo!()
     }
 

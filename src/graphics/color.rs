@@ -1,24 +1,24 @@
 pub type Color = u16;
 pub type Pixel = u8;
 
-const RED_MASK: u8 = 0b11100000;
-const GREEN_MASK: u8 = 0b00011100;
-const BLUE_MASK: u8 = 0b00000011;
-
 const RED_BIT_OFFSET: usize = 5;
 const GREEN_BIT_OFFSET: usize = 2;
 
-const RED_MAX: u8 = 7;
-const GREEN_MAX: u8 = 7;
-const BLUE_MAX: u8 = 3;
+const RED_MAX: u8 = 0b111;
+const GREEN_MAX: u8 = 0b111;
+const BLUE_MAX: u8 = 0b11;
+
+const RED_MASK: u8 = RED_MAX << RED_BIT_OFFSET;
+const GREEN_MASK: u8 = GREEN_MAX << GREEN_BIT_OFFSET;
+const BLUE_MASK: u8 = BLUE_MAX;
 
 pub(crate) fn split_color(color: Color) -> (Pixel, Pixel) {
-    (color as Pixel, (color >> (size_of::<Pixel>() * 8)) as Pixel)
+    (color as Pixel, (color >> Pixel::BITS) as Pixel)
 }
 
 fn pixel_to_rgb(pixel: Pixel) -> (u8, u8, u8) {
-    let r: u8 = (pixel & RED_MASK) >> 5;
-    let g: u8 = (pixel & GREEN_MASK) >> 2;
+    let r: u8 = (pixel & RED_MASK) >> RED_BIT_OFFSET;
+    let g: u8 = (pixel & GREEN_MASK) >> GREEN_BIT_OFFSET;
     let b: u8 = pixel & BLUE_MASK;
     (r, g, b)
 }
