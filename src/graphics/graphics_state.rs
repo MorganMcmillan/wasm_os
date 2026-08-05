@@ -6,19 +6,18 @@ use crate::graphics::{
     draw_region::DrawRegion,
 };
 
-pub const FONT_SIZE: usize = 8 * 256;
+pub(crate) const FONT_SIZE: usize = 8 * 256;
 // TODO: create a default font file using some kind of bitmap drawing program.
-pub const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
+pub(crate) const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
 
-pub mod draw_flags {
+mod draw_flags {
     /// Whether the transparency color applies to the fill pattern.
-    pub const FILLP_TRANSPARENT: u8 = 0b1;
+    pub(crate) const FILLP_TRANSPARENT: u8 = 0b1;
     /// Whether the fill pattern causes sprites to use the secondary palette.
-    pub const FILLP_SPRITE: u8 = 0b10;
-    // TODO: add the ability to invert filled drawing.
+    pub(crate) const FILLP_SPRITE: u8 = 0b10;
 }
 
-enum ColorMode {
+pub(crate) enum ColorMode {
     // Default drawing
     None = 0,
     // Adds the previous color
@@ -55,26 +54,26 @@ impl ColorMode {
 /// drivers.
 pub struct GraphicsState {
     /// The current transparency color
-    pub transparency_color: u8,
+    pub(crate) transparency_color: u8,
     /// The 2d region of memory to draw pixels to.
-    pub draw_region: DrawRegion,
+    pub(crate) draw_region: DrawRegion,
     /// The address to draw to.
-    pub draw_address: usize,
+    pub(crate) draw_address: usize,
     /// The camera.
-    pub camera: Camera,
+    pub(crate) camera: Camera,
     /// The optional address of the bitmap font to use in `draw_text`.
     /// When None, the default font is used.
-    pub font_address: Option<NonZeroU32>,
-    pub fill_pattern: [u8; 8],
-    pub secondary_palette_address: Option<NonZeroU32>,
-    pub draw_flags: u8,
-    color_mode: ColorMode,
-    pub read_mask: Pixel,
-    pub write_mask: Pixel,
+    pub(crate) font_address: Option<NonZeroU32>,
+    pub(crate) fill_pattern: [u8; 8],
+    pub(crate) secondary_palette_address: Option<NonZeroU32>,
+    pub(crate) draw_flags: u8,
+    pub(crate) color_mode: ColorMode,
+    pub(crate) read_mask: Pixel,
+    pub(crate) write_mask: Pixel,
 }
 
 impl GraphicsState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             transparency_color: 0,
             draw_region: DrawRegion::new(0, 0),
@@ -90,23 +89,19 @@ impl GraphicsState {
         }
     }
 
-    pub fn set_font(&mut self, font_address: u32) {
+    pub(crate) fn set_font(&mut self, font_address: u32) {
         self.font_address = NonZeroU32::new(font_address);
     }
 
-    pub fn font_address(&self) -> Option<NonZeroU32> {
-        self.font_address
-    }
-
-    pub fn use_default_font(&mut self) {
+    pub(crate) fn use_default_font(&mut self) {
         self.font_address = None;
     }
 
-    pub fn set_fill_pattern(&mut self, fillp: u64) {
+    pub(crate) fn set_fill_pattern(&mut self, fillp: u64) {
         self.fill_pattern = fillp.to_le_bytes();
     }
 
-    pub fn get_fill_pattern(&self) -> u64 {
+    pub(crate) fn get_fill_pattern(&self) -> u64 {
         u64::from_le_bytes(self.fill_pattern)
     }
 
@@ -159,11 +154,11 @@ impl GraphicsState {
         }
     }
 
-    pub fn set_secondary_palette(&mut self, address: u32) {
+    pub(crate) fn set_secondary_palette(&mut self, address: u32) {
         self.secondary_palette_address = NonZeroU32::new(address);
     }
 
-    pub fn get_secondary_color(&self, memory: *const u8, index: u8) -> u8 {
+    pub(crate) fn get_secondary_color(&self, memory: *const u8, index: u8) -> u8 {
         if let Some(address) = self.secondary_palette_address {
             // SAFETY: the size of memory was checked before
             unsafe { memory.add(address.get() as usize).read() }
@@ -172,11 +167,11 @@ impl GraphicsState {
         }
     }
 
-    pub fn set_flags(&mut self, flags: u8) {
+    pub(crate) fn set_flags(&mut self, flags: u8) {
         self.draw_flags |= flags;
     }
 
-    pub fn unset_flags(&mut self, flags: u8) {
+    pub(crate) fn unset_flags(&mut self, flags: u8) {
         self.draw_flags &= !flags;
     }
 
@@ -184,7 +179,7 @@ impl GraphicsState {
         self.draw_flags & flag != 0
     }
 
-    pub fn set_color_mode(&mut self, mode: u8) {
+    pub(crate) fn set_color_mode(&mut self, mode: u8) {
         if let Some(mode) = ColorMode::from_int(mode) {
             self.color_mode = mode;
         }
@@ -192,18 +187,30 @@ impl GraphicsState {
 
     // Drawing
 
-    pub fn draw_pixel_untranslated(&mut self, draw_address: *mut u8, x: i32, y: i32, color: Color) {
+    pub(crate) fn draw_pixel_untranslated(
+        &mut self,
+        draw_address: *mut u8,
+        x: i32,
+        y: i32,
+        color: Color,
+    ) {
         let color = self.process_color(draw_address, x as usize, y as usize, color);
         self.draw_region.set_pixel(draw_address, x, y, color);
     }
 
-    pub fn draw_pixel(&mut self, draw_address: *mut u8, x: i32, y: i32, color: Color) {
+    pub(crate) fn draw_pixel(&mut self, draw_address: *mut u8, x: i32, y: i32, color: Color) {
         let (x, y) = self.camera.translate(x, y);
         self.draw_pixel_untranslated(draw_address, x, y, color);
     }
 
     // Checks is the pixel is the transparency color.
-    pub fn draw_pixel_checked(&mut self, draw_address: *mut u8, x: i32, y: i32, color: Color) {
+    pub(crate) fn draw_pixel_checked(
+        &mut self,
+        draw_address: *mut u8,
+        x: i32,
+        y: i32,
+        color: Color,
+    ) {
         if color as u8 != self.transparency_color {
             self.draw_pixel(draw_address, x, y, color);
         }
@@ -237,7 +244,7 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_line(
+    pub(crate) fn draw_line(
         &mut self,
         draw_address: *mut u8,
         x1: i32,
@@ -251,7 +258,7 @@ impl GraphicsState {
         });
     }
 
-    pub fn draw_textured_line(
+    pub(crate) fn draw_textured_line(
         &mut self,
         draw_address: *mut u8,
         x1: i32,
@@ -280,7 +287,14 @@ impl GraphicsState {
         });
     }
 
-    pub fn draw_hline(&mut self, draw_address: *mut u8, x: i32, y: i32, width: u32, color: Color) {
+    pub(crate) fn draw_hline(
+        &mut self,
+        draw_address: *mut u8,
+        x: i32,
+        y: i32,
+        width: u32,
+        color: Color,
+    ) {
         let (x, y) = self.camera.translate(x, y);
 
         if !self.draw_region.inside_height(y) {
@@ -300,7 +314,14 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_vline(&mut self, draw_address: *mut u8, x: i32, y: i32, height: u32, color: Color) {
+    pub(crate) fn draw_vline(
+        &mut self,
+        draw_address: *mut u8,
+        x: i32,
+        y: i32,
+        height: u32,
+        color: Color,
+    ) {
         let (x, y) = self.camera.translate(x, y);
 
         if !self.draw_region.inside_height(y) {
@@ -318,7 +339,7 @@ impl GraphicsState {
             }
         }
     }
-    pub fn draw_rectangle(
+    pub(crate) fn draw_rectangle(
         &mut self,
         draw_address: *mut u8,
         x: i32,
@@ -345,7 +366,7 @@ impl GraphicsState {
         );
     }
 
-    pub fn draw_filled_rectangle(
+    pub(crate) fn draw_filled_rectangle(
         &mut self,
         draw_address: *mut u8,
         x: i32,
@@ -362,7 +383,7 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_round_rectangle(
+    pub(crate) fn draw_round_rectangle(
         &mut self,
         draw_address: *mut u8,
         x: i32,
@@ -423,7 +444,7 @@ impl GraphicsState {
         );
     }
 
-    pub fn draw_filled_round_rectangle(
+    pub(crate) fn draw_filled_round_rectangle(
         &mut self,
         draw_address: *mut u8,
         x: i32,
@@ -484,7 +505,7 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_circle(
+    pub(crate) fn draw_circle(
         &mut self,
         draw_address: *mut u8,
         cx: i32,
@@ -506,7 +527,7 @@ impl GraphicsState {
         })
     }
 
-    pub fn draw_filled_circle(
+    pub(crate) fn draw_filled_circle(
         &mut self,
         draw_address: *mut u8,
         cx: i32,
@@ -589,7 +610,7 @@ impl GraphicsState {
         }
     }
 
-    pub fn draw_ellipse(
+    pub(crate) fn draw_ellipse(
         &mut self,
         draw_address: *mut u8,
         cx: i32,
@@ -615,7 +636,7 @@ impl GraphicsState {
         );
     }
 
-    pub fn draw_filled_ellipse(
+    pub(crate) fn draw_filled_ellipse(
         &mut self,
         draw_address: *mut u8,
         cx: i32,
@@ -640,7 +661,7 @@ impl GraphicsState {
         );
     }
 
-    pub fn draw_sprite(
+    pub(crate) fn draw_sprite(
         &mut self,
         draw_address: *mut u8,
         memory: *const u8,
@@ -731,7 +752,7 @@ impl GraphicsState {
     }
 
     #[allow(unused)]
-    pub fn draw_map(
+    pub(crate) fn draw_map(
         &mut self,
         draw_address: *mut u8,
         map: *const u8,
@@ -746,7 +767,7 @@ impl GraphicsState {
         todo!()
     }
 
-    pub fn draw_text(
+    pub(crate) fn draw_text(
         &mut self,
         draw_address: *mut u8,
         memory: *const u8,

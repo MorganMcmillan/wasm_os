@@ -95,11 +95,40 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
 
     linker.func_wrap(
         "env",
+        "get_fill_pattern",
+        |mut ctx: ProcessContext<T>| -> u64 { ctx.data_mut().graphics_state.get_fill_pattern() },
+    )?;
+
+    linker.func_wrap(
+        "env",
         "set_secondary_palette",
         |mut ctx: ProcessContext<T>, address: i32| {
             ctx.data_mut()
                 .graphics_state
                 .set_secondary_palette(address as u32);
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "set_flags",
+        |mut ctx: ProcessContext<T>, flags: u32| {
+            ctx.data_mut().graphics_state.set_flags(flags as u8);
+        },
+    )?;
+    linker.func_wrap(
+        "env",
+        "unset_flags",
+        |mut ctx: ProcessContext<T>, flags: u32| {
+            ctx.data_mut().graphics_state.unset_flags(flags as u8);
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "set_color_mode",
+        |mut ctx: ProcessContext<T>, mode: u32| {
+            ctx.data_mut().graphics_state.set_color_mode(mode as u8);
         },
     )?;
 
