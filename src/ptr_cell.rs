@@ -1,4 +1,5 @@
-/// A simple wrapper type for representing pointers as references
+/// A simple wrapper type for representing pointers as references.
+/// Used when lifetimes are just too rough.
 pub struct PtrCell<T: Sized> {
     pub inner: *mut T,
 }

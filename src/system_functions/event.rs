@@ -116,7 +116,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                 .as_wasm_process()
                 .get_exported_function(handler_index)
                 .expect(EVENT_HANDLER_NOT_FOUND)
-                .typed::<(i32, i32), ()>(&ctx)
+                .typed::<i32, ()>(&ctx)
                 .unwrap();
 
             ctx.data_mut().set_default_handler(handler);

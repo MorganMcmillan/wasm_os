@@ -1,26 +1,33 @@
 #![allow(static_mut_refs)]
 
-use std::any::Any;
-use std::collections::HashMap;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::task::JoinHandle;
+use std::{
+    any::Any,
+    collections::HashMap,
+    io,
+    path::{Path, PathBuf},
+    time::UNIX_EPOCH,
+};
 
 use string_interner::symbol::SymbolU32;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::task::JoinHandle;
 use wasmtime::ModuleExport;
 
-use crate::async_file::AsyncFile;
-use crate::event::Event;
-use crate::graphics::graphics_state::GraphicsState;
-use crate::id::{Id, IdStore};
-use crate::kernel::{FILE_CREATE, FILE_WRITE, Kernel, Pid};
-use crate::mut_cell::MutCell;
-use crate::wasm_process::WasmProcess;
+use crate::{
+    async_file::AsyncFile,
+    event::Event,
+    graphics::graphics_state::GraphicsState,
+    id::{Id, IdStore},
+    kernel::{FILE_CREATE, FILE_WRITE, Kernel, Pid},
+    mut_cell::MutCell,
+    wasm_process::WasmProcess,
+};
 
 /// A process represents the state of a running Webassembly process.
+/// This is just the data associated with it.
+/// It is used in system functions.
 pub struct Process<T: 'static> {
+    /// Backreference to the kernel that owns this process.
     pub kernel: &'static MutCell<Kernel<T>>,
     /// This process' id
     pub pid: Pid,
@@ -38,16 +45,23 @@ pub struct Process<T: 'static> {
     /// Stdout: (2, 0),
     /// Stderr: (3, 0)
     pub open_files: IdStore<AsyncFile>,
+    /// The table of iterated directories.
     pub directory_iterators: IdStore<cap_std::fs::ReadDir>,
-    /// Can be awaited to end the process early
+    /// Can be awaited to end the process early.
     pub join_handle: Option<JoinHandle<i32>>,
-    /// The return value of the process
+    /// The eventual return value of the process.
+    /// Currently has no use.
     pub exit_code: Option<u16>,
+    /// The list of children.
+    /// TODO: update this when a child exits.
     pub children: Vec<Pid>,
     pub child_iter_index: Option<u32>,
+    /// Events that are yet to be handled.
     pub event_queue: Vec<Event>,
+    /// Wasm functions to handle the events.
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
-    pub default_event_handler: Option<wasmtime::TypedFunc<(i32, i32), ()>>,
+    /// The default wasm function for any event
+    pub default_event_handler: Option<wasmtime::TypedFunc<i32, ()>>,
     pub byte_data: Option<Vec<u8>>,
     pub graphics_state: GraphicsState,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
@@ -315,7 +329,7 @@ impl<T> Process<T> {
         self.event_handlers.remove(&name);
     }
 
-    pub fn set_default_handler(&mut self, handler: wasmtime::TypedFunc<(i32, i32), ()>) {
+    pub fn set_default_handler(&mut self, handler: wasmtime::TypedFunc<i32, ()>) {
         self.default_event_handler = Some(handler);
     }
 

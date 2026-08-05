@@ -1,20 +1,28 @@
 #![allow(static_mut_refs)]
 
-use std::collections::HashSet;
-use std::mem::transmute;
-use std::path::PathBuf;
-use std::task::Poll::{Pending, Ready};
-use std::task::{Context, Waker};
+use std::{
+    collections::HashSet,
+    mem::transmute,
+    path::PathBuf,
+    task::{
+        Context,
+        Poll::{Pending, Ready},
+        Waker,
+    },
+};
 
-use crate::event::Event;
-use crate::graphics::load_graphics_functions;
-use crate::kernel::{Kernel, Pid, ProcessLinker};
-use crate::mut_cell::MutCell;
-use crate::process::Process;
-use crate::ptr_cell::PtrCell;
-use crate::system_functions::load_system_functions;
+use crate::{
+    event::Event,
+    graphics::load_graphics_functions,
+    kernel::{Kernel, Pid, ProcessLinker},
+    mut_cell::MutCell,
+    process::Process,
+    ptr_cell::PtrCell,
+    system_functions::load_system_functions,
+};
+
 use tokio::task::yield_now;
-use wasmtime::{Engine, Instance, Memory, Module, ModuleExport, Store};
+use wasmtime::{Engine, Instance, Memory, Module, ModuleExport, Store, TypedFunc};
 
 pub type ProcessStore<T> = Store<Process<T>>;
 
@@ -45,7 +53,8 @@ fn get_memory_slice_mut<'a, T>(
 ) -> &'a mut [u8] {
     get_wasm_memory(instance, store, mem_index).data_mut(store)
 }
-/// Represents the actual running process, including its memory and functions
+/// A wasm process represents the actual running process, including its memory and functions.
+/// It holds the process' data in `store`.
 pub struct WasmProcess<T: 'static> {
     pub instance: wasmtime::Instance,
     pub store: ProcessStore<T>,
@@ -67,16 +76,30 @@ fn load_libraries<T>(
     engine: &Engine,
     libraries: &[&str],
 ) -> wasmtime::Result<()> {
-    for library in libraries.iter().cloned() {
+    fn load_library_from<T>(
+        kernel: &'static MutCell<Kernel<T>>,
+        path: &str,
+        library: &str,
+    ) -> Option<Vec<u8>> {
         let mut library_path = PathBuf::new();
-        library_path.push("lib");
+        library_path.push(path);
         library_path.push(library);
         library_path.set_extension("wasm");
 
-        if let Ok(bytes) = kernel.read_file(&library_path) {
-            let module = Module::new(engine, bytes)?;
-            linker.module(&mut store, library, &module)?;
-        }
+        kernel.read_file(library_path).ok()
+    }
+
+    for library in libraries.iter().cloned() {
+        let Some(bytes) = load_library_from(kernel, "rom/lib", library)
+            .or_else(|| load_library_from(kernel, "bios/lib", library))
+            .or_else(|| load_library_from(kernel, "lib", library))
+        else {
+            continue;
+        };
+
+        let module = Module::new(engine, bytes)?;
+
+        linker.module(&mut store, library, &module)?;
     }
 
     Ok(())
@@ -121,9 +144,12 @@ impl<T> WasmProcess<T> {
         Ok(Self { instance, store })
     }
 
+    /// Gets a mutable slice of memory from this process.
     pub fn get_memory(&mut self, address: usize, len: usize) -> &'static mut [u8] {
         let mem_index = self.store.data().memory_export.unwrap();
         let memory = get_memory_slice_mut(&self.instance, &mut self.store, &mem_index);
+        // SAFETY: this method must only be called in system functions, where the lifetime of this
+        // process is valid.
         unsafe { std::mem::transmute(&mut memory[address..(address + len)]) }
     }
 
@@ -136,6 +162,10 @@ impl<T> WasmProcess<T> {
         }
     }
 
+    /// Runs this process.
+    /// This method does not wait for the process to finish, rather it creates a new task and eventually returns an exit code.
+    /// This calls the exported wasm function `run`, which is expected to have the signature `() ->
+    /// i32`
     pub async fn run(&mut self) -> i32 {
         let pid = self.store.data().pid;
         let mut self_cell = PtrCell::new(self as *mut Self);
@@ -191,7 +221,10 @@ impl<T> WasmProcess<T> {
         }
     }
 
+    /// Process all events in the event queue.
     async fn process_queue(&mut self) {
+        // Prevent prepared data from being overwriten by a handler, in the rare case that the
+        // process interupts when data is being prepared.
         let previous_data = self.store.data_mut().byte_data.take();
 
         let mut old_event_queue = Vec::new();
@@ -204,33 +237,46 @@ impl<T> WasmProcess<T> {
         self.store.data_mut().byte_data = previous_data;
     }
 
-    async fn process_event(&mut self, mut event: Event) {
+    /// Processes a single event.
+    async fn process_event(&mut self, event: Event) {
+        async fn handle_event<T>(
+            mut store: &mut ProcessStore<T>,
+            mut event: Event,
+            handler: &TypedFunc<i32, ()>,
+        ) {
+            let sym = event.interned_name();
+
+            store
+                .data()
+                .kernel
+                .borrow_static()
+                .set_current_event(&raw mut event);
+            let length = event.data().len();
+
+            let result = handler.call_async(&mut store, length as i32).await;
+
+            if let Err(e) = result {
+                let event_name = store.data().kernel.get_event_name(sym);
+                eprintln!("Error in event handler {}: {}", event_name, e);
+            }
+
+            store.data().kernel.borrow_static().end_current_event();
+        }
+
         unsafe {
             let self_ptr = self as *mut Self;
-
             let sym = event.interned_name();
 
             if let Some(handler) = (*self_ptr).store.data().event_handlers.get(&sym) {
-                self.store
-                    .data()
-                    .kernel
-                    .borrow_static()
-                    .set_current_event(&raw mut event);
-                let length = event.data().len();
-
-                let result = handler.call_async(&mut self.store, length as i32).await;
-
-                if let Err(e) = result {
-                    let event_name = self.store.data().kernel.get_event_name(sym);
-                    eprintln!("Error in event handler {}: {}", event_name, e);
-                }
-
-                self.store.data().kernel.borrow_static().end_current_event();
+                handle_event(&mut self.store, event, handler).await;
+            } else if let Some(default_handler) = &(*self_ptr).store.data().default_event_handler {
+                handle_event(&mut self.store, event, default_handler).await;
             }
         }
     }
 
     pub fn get_exported_function(&mut self, handler_index: i32) -> Option<wasmtime::Func> {
+        // TODO: store the table index inside the process itself
         self.instance
             .get_table(&mut self.store, "__indirect_function_table")
             .or_else(|| self.instance.get_table(&mut self.store, "table"))
