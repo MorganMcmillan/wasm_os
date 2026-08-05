@@ -144,13 +144,17 @@ impl<T> WasmProcess<T> {
         Ok(Self { instance, store })
     }
 
-    /// Gets a mutable slice of memory from this process.
-    pub fn get_memory(&mut self, address: usize, len: usize) -> &'static mut [u8] {
+    pub fn get_entire_memory(&mut self) -> &'static mut [u8] {
         let mem_index = self.store.data().memory_export.unwrap();
         let memory = get_memory_slice_mut(&self.instance, &mut self.store, &mem_index);
         // SAFETY: this method must only be called in system functions, where the lifetime of this
         // process is valid.
-        unsafe { std::mem::transmute(&mut memory[address..(address + len)]) }
+        unsafe { std::mem::transmute(memory) }
+    }
+
+    /// Gets a mutable slice of memory from this process.
+    pub fn get_memory(&mut self, address: usize, len: usize) -> &'static mut [u8] {
+        &mut self.get_entire_memory()[address..(address + len)]
     }
 
     /// Sets a slice of memory. The length of the slice is given by the lenght of the value

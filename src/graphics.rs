@@ -8,6 +8,8 @@ mod color;
 mod draw_region;
 pub mod graphics_state;
 
+use std::num::NonZeroU32;
+
 use crate::{
     graphics::{color::Color, draw_region::DrawRegion},
     kernel::{ProcessContext, ProcessLinker},
@@ -15,6 +17,8 @@ use crate::{
 
 /// Loads all the system functions related to drawing pixels to an address.
 pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Result<()> {
+    // State configuration
+
     linker.func_wrap(
         "env",
         "set_draw_region",
@@ -83,6 +87,17 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
             ctx.data_mut().graphics_state.set_fill_pattern(pattern);
         },
     )?;
+
+    linker.func_wrap(
+        "env",
+        "set_secondary_palette",
+        |mut ctx: ProcessContext<T>, palette_ptr: i32| {
+            ctx.data_mut().graphics_state.secondary_palette_address =
+                NonZeroU32::new(palette_ptr as u32);
+        },
+    )?;
+
+    // Drawing
 
     linker.func_wrap(
         "env",
@@ -382,12 +397,12 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
          bg: u32| {
             let draw_address = ctx.data().get_draw_address();
 
-            let font = ctx.data().get_font();
+            let memory = ctx.data().get_entire_memory();
             let text = ctx.data().get_memory(text_ptr as usize, text_len as usize);
 
             ctx.data_mut().graphics_state.draw_text(
                 draw_address,
-                font,
+                memory,
                 text,
                 x,
                 y,

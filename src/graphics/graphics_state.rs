@@ -26,6 +26,7 @@ pub struct GraphicsState {
     /// When None, the default font is used.
     pub font_address: Option<NonZeroU32>,
     pub fill_pattern: [u8; 8],
+    pub secondary_palette_address: Option<NonZeroU32>,
 }
 
 impl GraphicsState {
@@ -37,6 +38,7 @@ impl GraphicsState {
             camera: Camera::new(0, 0),
             font_address: None,
             fill_pattern: [0; 8],
+            secondary_palette_address: None,
         }
     }
 
@@ -543,7 +545,7 @@ impl GraphicsState {
 
     pub fn draw_map(
         &mut self,
-        _memory: *mut u8,
+        _draw_address: *mut u8,
         _map: *const u8,
         _map_width: usize,
         _map_height: usize,
@@ -557,8 +559,8 @@ impl GraphicsState {
 
     pub fn draw_text(
         &mut self,
-        memory: *mut u8,
-        font: &[u8; FONT_SIZE],
+        draw_address: *mut u8,
+        memory: &[u8],
         text: &[u8],
         x: i32,
         y: i32,
@@ -577,7 +579,7 @@ impl GraphicsState {
                 x = start_x;
                 y += 8;
             } else {
-                self.draw_character_untranslated(memory, font, character, x, y, fg, bg);
+                self.draw_character_untranslated(draw_address, memory, character, x, y, fg, bg);
                 x += 8;
             }
         }
@@ -586,18 +588,25 @@ impl GraphicsState {
     /// Draws a character to the exact screen coordinates
     fn draw_character_untranslated(
         &mut self,
-        memory: *mut u8,
-        font: &[u8; FONT_SIZE],
+        draw_address: *mut u8,
+        memory: &[u8],
         character: u8,
         x: i32,
         y: i32,
         fg: u8,
         bg: u8,
     ) {
+        let font = if let Some(address) = self.font_address {
+            let address = address.get() as usize;
+            &memory[address..(address + FONT_SIZE)].try_into().unwrap()
+        } else {
+            &DEFAULT_FONT
+        };
+
         let character = character as usize;
         for i in 0..8 {
             let line = byte_to_8_bytes(font[character * 8 + i], fg, bg);
-            self.draw_line_bytes_untranslated(memory, x, y + i as i32, &line);
+            self.draw_line_bytes_untranslated(draw_address, x, y + i as i32, &line);
         }
     }
 }
