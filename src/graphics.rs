@@ -8,10 +8,8 @@ mod color;
 mod draw_region;
 pub mod graphics_state;
 
-use std::num::NonZeroU32;
-
 use crate::{
-    graphics::{color::Color, draw_region::DrawRegion},
+    graphics::{color::Color, draw_region::DrawRegion, graphics_state::FONT_SIZE},
     kernel::{ProcessContext, ProcessLinker},
 };
 
@@ -23,8 +21,13 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
         "env",
         "set_draw_region",
         |mut ctx: ProcessContext<T>, address: u32, width: u32, height: u32| {
-            ctx.data_mut().graphics_state.draw_region = DrawRegion::new(width, height);
-            ctx.data_mut().graphics_state.draw_address = address as usize;
+            let address = address as usize;
+            let draw_region = DrawRegion::new(width, height);
+            ctx.data()
+                .assert_memory_size(address, draw_region.area() as usize, "draw_region");
+
+            ctx.data_mut().graphics_state.draw_address = address;
+            ctx.data_mut().graphics_state.draw_region = draw_region;
         },
     )?;
 
@@ -72,6 +75,8 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
         "env",
         "set_font",
         |mut ctx: ProcessContext<T>, font: i32| {
+            ctx.data()
+                .assert_memory_size(font as usize, FONT_SIZE, "font");
             ctx.data_mut().graphics_state.set_font(font as u32);
         },
     )?;
@@ -91,9 +96,10 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
     linker.func_wrap(
         "env",
         "set_secondary_palette",
-        |mut ctx: ProcessContext<T>, palette_ptr: i32| {
-            ctx.data_mut().graphics_state.secondary_palette_address =
-                NonZeroU32::new(palette_ptr as u32);
+        |mut ctx: ProcessContext<T>, address: i32| {
+            ctx.data_mut()
+                .graphics_state
+                .set_secondary_palette(address as u32);
         },
     )?;
 
@@ -334,8 +340,11 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
                 .get_memory(sprite as usize, (spr_width * spr_height) as usize)
                 .as_mut_ptr();
 
+            let memory = ctx.data().get_entire_memory().as_ptr();
+
             ctx.data_mut().graphics_state.draw_sprite(
                 draw_address,
+                memory,
                 x,
                 y,
                 sprite,
@@ -397,7 +406,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
          bg: u32| {
             let draw_address = ctx.data().get_draw_address();
 
-            let memory = ctx.data().get_entire_memory();
+            let memory = ctx.data().get_entire_memory().as_ptr();
             let text = ctx.data().get_memory(text_ptr as usize, text_len as usize);
 
             ctx.data_mut().graphics_state.draw_text(

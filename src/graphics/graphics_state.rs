@@ -1,14 +1,54 @@
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, ptr::NonNull};
 
 use crate::graphics::{
     camera::Camera,
-    color::{self, Color},
+    color::{self, Color, Pixel},
     draw_region::DrawRegion,
 };
 
 pub const FONT_SIZE: usize = 8 * 256;
 // TODO: create a default font file using some kind of bitmap drawing program.
 pub const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
+
+pub mod draw_flags {
+    /// Whether the transparency color applies to the fill pattern.
+    pub const FILLP_TRANSPARENT: u8 = 0b1;
+    /// Whether the fill pattern causes sprites to use the secondary palette.
+    pub const FILLP_SPRITE: u8 = 0b10;
+    // TODO: add the ability to invert filled drawing.
+}
+
+enum ColorMode {
+    // Default drawing
+    None = 0,
+    // Adds the previous color
+    Add,
+    // Subtracts the previous color
+    Subtract,
+    // Multiplies the previous color
+    Multiply,
+    // Divides the previous color
+    Divide,
+    // Adds and then halves the previous color
+    Average,
+    // Applies a bitplane mask to the current drawn color
+    Mask,
+}
+
+impl ColorMode {
+    fn from_int(mode: u8) -> Option<ColorMode> {
+        match mode {
+            0 => Some(Self::None),
+            1 => Some(Self::Add),
+            2 => Some(Self::Subtract),
+            3 => Some(Self::Multiply),
+            4 => Some(Self::Divide),
+            5 => Some(Self::Average),
+            6 => Some(Self::Mask),
+            _ => None,
+        }
+    }
+}
 
 /// Represents the state of drawing within a process.
 /// The reason this is part of the process itself is to avoid the overhead of type conversion within
@@ -27,6 +67,10 @@ pub struct GraphicsState {
     pub font_address: Option<NonZeroU32>,
     pub fill_pattern: [u8; 8],
     pub secondary_palette_address: Option<NonZeroU32>,
+    pub draw_flags: u8,
+    color_mode: ColorMode,
+    pub read_mask: Pixel,
+    pub write_mask: Pixel,
 }
 
 impl GraphicsState {
@@ -39,6 +83,10 @@ impl GraphicsState {
             font_address: None,
             fill_pattern: [0; 8],
             secondary_palette_address: None,
+            draw_flags: 0,
+            color_mode: ColorMode::None,
+            read_mask: 0,
+            write_mask: 0,
         }
     }
 
@@ -55,11 +103,11 @@ impl GraphicsState {
     }
 
     pub fn set_fill_pattern(&mut self, fillp: u64) {
-        self.fill_pattern = fillp.to_be_bytes();
+        self.fill_pattern = fillp.to_le_bytes();
     }
 
     pub fn get_fill_pattern(&self) -> u64 {
-        u64::from_be_bytes(self.fill_pattern)
+        u64::from_le_bytes(self.fill_pattern)
     }
 
     /// Gets the fill pattern line for any y coordinate in the draw region.
@@ -68,12 +116,84 @@ impl GraphicsState {
         byte_to_8_bytes(self.fill_pattern[y % 8], bg, fg)
     }
 
-    fn get_fill_pattern_pixel(&self, x: usize, y: usize, color: Color) -> u8 {
-        self.get_fill_pattern_line(y, color)[x % 8]
+    fn process_color(&self, draw_address: *mut u8, x: usize, y: usize, color: Color) -> Pixel {
+        let pixel = self.get_fill_pattern_line(y, color)[x % 8];
+        self.apply_color_math(draw_address, x, y, pixel);
     }
 
+    fn apply_color_math(&self, draw_address: *mut u8, x: usize, y: usize, pixel: Pixel) -> Pixel {
+        let prev_pixel = self.draw_region.get_pixel(draw_address, x as i32, y as i32);
+        match self.color_mode {
+            ColorMode::None => pixel,
+            ColorMode::Add => color::add(prev_pixel, pixel),
+            ColorMode::Subtract => color::subtract(prev_pixel, pixel),
+            ColorMode::Multiply => color::multiply(prev_pixel, pixel),
+            ColorMode::Divide => color::divide(prev_pixel, pixel),
+            ColorMode::Average => color::average(prev_pixel, pixel),
+            ColorMode::Mask => color::mask(prev_pixel, pixel, self.read_mask, self.write_mask),
+        }
+    }
+
+    fn get_fill_pattern_sprite_pixel(
+        &self,
+        memory: *const u8,
+        x: usize,
+        y: usize,
+        pixel: u8,
+    ) -> Option<u8> {
+        let fill_pattern_line = self.fill_pattern[y % 8];
+        let bit = fill_pattern_line >> (x % 8);
+        if bit == 1 {
+            let pixel = self.get_secondary_color(memory, pixel);
+            if self.has_flag(draw_flags::FILLP_TRANSPARENT) && pixel == self.transparency_color {
+                None
+            } else {
+                Some(pixel)
+            }
+        } else {
+            if pixel == self.transparency_color {
+                None
+            } else {
+                Some(pixel)
+            }
+        }
+    }
+
+    pub fn set_secondary_palette(&mut self, address: u32) {
+        self.secondary_palette_address = NonZeroU32::new(address);
+    }
+
+    pub fn get_secondary_color(&self, memory: *const u8, index: u8) -> u8 {
+        if let Some(address) = self.secondary_palette_address {
+            // SAFETY: the size of memory was checked before
+            unsafe { memory.add(address.get() as usize).read() }
+        } else {
+            index
+        }
+    }
+
+    pub fn set_flags(&mut self, flags: u8) {
+        self.draw_flags |= flags;
+    }
+
+    pub fn unset_flags(&mut self, flags: u8) {
+        self.draw_flags &= !flags;
+    }
+
+    fn has_flag(&self, flag: u8) -> bool {
+        self.draw_flags & flag != 0
+    }
+
+    pub fn set_color_mode(&mut self, mode: u8) {
+        if let Some(mode) = ColorMode::from_int(mode) {
+            self.color_mode = mode;
+        }
+    }
+
+    // Drawing
+
     pub fn draw_pixel_untranslated(&mut self, draw_address: *mut u8, x: i32, y: i32, color: Color) {
-        let color = self.get_fill_pattern_pixel(x as usize, y as usize, color);
+        let color = self.process_color(x as usize, y as usize, color);
         self.draw_region.set_pixel(draw_address, x, y, color);
     }
 
@@ -153,7 +273,6 @@ impl GraphicsState {
                 draw_address,
                 x,
                 y,
-                // TODO: allow fill patterns to look up colors in a secondary palette
                 texture_region.get_pixel_wrapped(texture, tex_x as i32, tex_y as i32) as Color,
             );
             tex_x += tex_dx;
@@ -175,7 +294,7 @@ impl GraphicsState {
             // SAFETY: x is positive and if it goes out of bounds, then width is 0.
             let destination = draw_address.add(index);
             for i in 0..width as usize {
-                let pixel = self.get_fill_pattern_pixel(x as usize + i, y as usize, color);
+                let pixel = self.process_color(x as usize + i, y as usize, color);
                 destination.add(i).write(pixel);
             }
         }
@@ -192,7 +311,7 @@ impl GraphicsState {
 
         for i in 0..height {
             let y = y + i as i32;
-            let color = self.get_fill_pattern_pixel(x as usize, y as usize, color);
+            let color = self.process_color(x as usize, y as usize, color);
             unsafe {
                 self.draw_region
                     .set_pixel_unchecked(draw_address, x, y, color);
@@ -524,6 +643,7 @@ impl GraphicsState {
     pub fn draw_sprite(
         &mut self,
         draw_address: *mut u8,
+        memory: *const u8,
         x: i32,
         mut y: i32,
         sprite: *const u8,
@@ -541,31 +661,67 @@ impl GraphicsState {
 
         for i in 0..spr_height {
             let line = sprite_region.get_line(sprite, (line_y + i) as usize);
-            self.draw_line_bytes(draw_address, x, y + i as i32, line);
+            self.draw_line_bytes(draw_address, memory, x, y + i as i32, line);
         }
     }
 
     /// Draws a sequence of bytes as a line.
-    fn draw_line_bytes(&mut self, draw_address: *mut u8, x: i32, y: i32, line: &[u8]) {
+    fn draw_line_bytes(
+        &mut self,
+        draw_address: *mut u8,
+        memory: *const u8,
+        x: i32,
+        y: i32,
+        line: &[u8],
+    ) {
         let (x, y) = self.camera.translate(x, y);
 
         if !self.draw_region.inside_height(y) {
             return;
         }
 
-        self.draw_line_bytes_untranslated(draw_address, x, y, line);
+        self.draw_line_bytes_untranslated(
+            draw_address,
+            NonNull::new(memory as *mut u8),
+            x,
+            y,
+            line,
+        );
     }
 
-    fn draw_line_bytes_untranslated(&mut self, draw_address: *mut u8, x: i32, y: i32, line: &[u8]) {
+    fn draw_line_bytes_untranslated(
+        &mut self,
+        draw_address: *mut u8,
+        memory: Option<NonNull<u8>>,
+        x: i32,
+        y: i32,
+        line: &[u8],
+    ) {
         let (x, width, offset) = self.draw_region.clamp_width(x, line.len() as u32);
 
         // SAFETY: the line's length is guarenteed to be within the drawing region
         unsafe {
             let line_destination = draw_address.add(self.draw_region.as_index(x, y));
-            for i in 0..width as usize {
-                let pixel = *line.get_unchecked(i + offset as usize);
-                if pixel != self.transparency_color {
-                    line_destination.add(i).write(pixel);
+            if let Some(memory) = memory
+                && self.has_flag(draw_flags::FILLP_SPRITE)
+            {
+                for i in 0..width as usize {
+                    let pixel = *line.get_unchecked(i + offset as usize);
+                    if let Some(pixel) = self.get_fill_pattern_sprite_pixel(
+                        memory.as_ptr(),
+                        x as usize + i,
+                        y as usize,
+                        pixel,
+                    ) {
+                        line_destination.add(i).write(pixel);
+                    }
+                }
+            } else {
+                for i in 0..width as usize {
+                    let pixel = *line.get_unchecked(i + offset as usize);
+                    if pixel != self.transparency_color {
+                        line_destination.add(i).write(pixel);
+                    }
                 }
             }
         }
@@ -588,7 +744,7 @@ impl GraphicsState {
     pub fn draw_text(
         &mut self,
         draw_address: *mut u8,
-        memory: &[u8],
+        memory: *const u8,
         text: &[u8],
         x: i32,
         y: i32,
@@ -617,7 +773,7 @@ impl GraphicsState {
     fn draw_character_untranslated(
         &mut self,
         draw_address: *mut u8,
-        memory: &[u8],
+        memory: *const u8,
         character: u8,
         x: i32,
         y: i32,
@@ -626,7 +782,14 @@ impl GraphicsState {
     ) {
         let font = if let Some(address) = self.font_address {
             let address = address.get() as usize;
-            &memory[address..(address + FONT_SIZE)].try_into().unwrap()
+            // SAFETY: size was checked before pointer was passed
+            unsafe {
+                memory
+                    .add(address)
+                    .cast::<[u8; FONT_SIZE]>()
+                    .as_ref()
+                    .unwrap()
+            }
         } else {
             &DEFAULT_FONT
         };
@@ -634,7 +797,7 @@ impl GraphicsState {
         let character = character as usize;
         for i in 0..8 {
             let line = byte_to_8_bytes(font[character * 8 + i], fg, bg);
-            self.draw_line_bytes_untranslated(draw_address, x, y + i as i32, &line);
+            self.draw_line_bytes_untranslated(draw_address, None, x, y + i as i32, &line);
         }
     }
 }

@@ -390,6 +390,15 @@ impl<T> Process<T> {
         )
         .as_mut_ptr()
     }
+
+    pub fn assert_memory_size(&self, address: usize, len: usize, mem_name: &str) {
+        assert!(
+            self.get_entire_memory()
+                .get(address..(address + len))
+                .is_some(),
+            "Expected memory slice '{mem_name}' to be within bounds."
+        );
+    }
 }
 
 fn time_since_unix_epoch(time: cap_std::time::SystemTime) -> i64 {

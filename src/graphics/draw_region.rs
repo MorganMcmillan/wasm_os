@@ -44,10 +44,14 @@ impl DrawRegion {
         }
     }
 
+    pub fn get_pixel(&self, draw_address: *const u8, x: i32, y: i32) -> u8 {
+        unsafe { draw_address.add(self.as_index(x, y)).read() }
+    }
+
     /// Gets the pixel at the given position, with that position being wrapped to within the texture.
     pub fn get_pixel_wrapped(&self, draw_address: *const u8, x: i32, y: i32) -> u8 {
         let (x, y) = (x % self.width as i32, y % self.height as i32);
-        unsafe { draw_address.add(self.as_index(x, y)).read() }
+        self.get_pixel(draw_address, x, y)
     }
 
     /// Clamps the width and x position to be inside this region.
