@@ -146,6 +146,7 @@ impl<T: 'static> Kernel<T> {
                 kernel,
                 path,
                 Pid::default(),
+                Box::new([]),
                 AsyncFile::stdin(),
                 AsyncFile::stdout(),
                 AsyncFile::stderr(),
@@ -179,11 +180,12 @@ impl<T: 'static> Kernel<T> {
         kernel: &'static MutCell<Kernel<T>>,
         path: &str,
         parent: Pid,
+        args: Box<[Box<[u8]>]>,
         stdin: AsyncFile,
         stdout: AsyncFile,
         stderr: AsyncFile,
     ) -> Result<Pid, CreateProcessError> {
-        let pid = Kernel::create_process(kernel, path, parent, stdin, stdout, stderr).await?;
+        let pid = Kernel::create_process(kernel, path, parent, args, stdin, stdout, stderr).await?;
         let process = kernel.borrow_static().get_process_mut(pid).unwrap();
         let join_handle = task::spawn(process.run());
 
@@ -204,6 +206,7 @@ impl<T: 'static> Kernel<T> {
         kernel: &'static MutCell<Kernel<T>>,
         path: &str,
         parent: Pid,
+        args: Box<[Box<[u8]>]>,
         stdin: AsyncFile,
         stdout: AsyncFile,
         stderr: AsyncFile,
@@ -231,7 +234,7 @@ impl<T: 'static> Kernel<T> {
                 .clone()
         };
 
-        let mut process = Process::new(kernel, parent, label, cwd, stdin, stdout, stderr);
+        let mut process = Process::new(kernel, parent, args, label, cwd, stdin, stdout, stderr);
 
         for (id, driver) in kernel.borrow_static().drivers.iter_mut().enumerate() {
             if let Some(process_state) = driver.create_process_state() {

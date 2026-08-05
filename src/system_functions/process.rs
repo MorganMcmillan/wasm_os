@@ -4,7 +4,7 @@ use crate::{
     async_file::AsyncFile,
     kernel::{Kernel, Pid, ProcessContext, ProcessLinker},
     ptr_cell::PtrCell,
-    system_functions::get_str,
+    system_functions::{get_memory, get_str},
 };
 
 pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Result<()> {
@@ -28,7 +28,8 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
     linker.func_wrap_async(
         "env",
         "spawn",
-        |ctx: ProcessContext<T>, (path_ptr, path_len): (i32, u32)| {
+        |ctx: ProcessContext<T>,
+         (path_ptr, path_len, argc, arg_lens, argv): (i32, u32, u32, i32, i32)| {
             let result = get_str(&ctx, path_ptr, path_len);
             let pid = ctx.data().pid;
 
@@ -38,10 +39,28 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     Err(_) => return 0,
                 };
 
+                let arg_lens = get_memory(&ctx, arg_lens, argc * 4);
+                let argv = get_memory(&ctx, argv, argc * 4);
+
+                fn get_i32(slice: &[u8], i: usize) -> i32 {
+                    i32::from_le_bytes(slice[(i * 4)..(i * 4 + 4)].try_into().unwrap())
+                }
+
+                let mut args = Vec::with_capacity(argc as usize);
+                for i in 0..argc as usize {
+                    let arg_len = get_i32(arg_lens, i);
+                    let arg_ptr = get_i32(argv, i);
+                    let arg = get_memory(&ctx, arg_ptr, arg_len as u32)
+                        .to_owned()
+                        .into_boxed_slice();
+                    args.push(arg);
+                }
+
                 match Kernel::run_process(
                     ctx.data().kernel,
                     path,
                     pid,
+                    args.into_boxed_slice(),
                     AsyncFile::Null,
                     AsyncFile::Null,
                     AsyncFile::Null,
@@ -52,6 +71,14 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     Err(_) => 0,
                 }
             })
+        },
+    )?;
+
+    linker.func_wrap(
+        "env",
+        "prepare_arg",
+        |mut ctx: ProcessContext<T>, index: u32| -> u32 {
+            ctx.data_mut().prepare_arg(index as u16) as u32
         },
     )?;
 

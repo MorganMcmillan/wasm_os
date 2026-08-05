@@ -20,6 +20,7 @@ use crate::{
     id::{Id, IdStore},
     kernel::{FILE_CREATE, FILE_WRITE, Kernel, Pid},
     mut_cell::MutCell,
+    ptr_cell::PtrCell,
     wasm_process::WasmProcess,
 };
 
@@ -33,6 +34,8 @@ pub struct Process<T: 'static> {
     pub pid: Pid,
     /// The parent process' id
     pub parent_pid: Pid,
+    /// The list of arguments given to the process
+    pub(crate) args: Box<[Box<[u8]>]>,
     /// The label is this process' file name without the extension
     pub label: Box<str>,
     /// The directory for which files are opened relative to
@@ -68,9 +71,11 @@ pub struct Process<T: 'static> {
 }
 
 impl<T> Process<T> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         kernel: &'static MutCell<Kernel<T>>,
         parent_pid: Pid,
+        args: Box<[Box<[u8]>]>,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
         stdin: AsyncFile,
@@ -86,6 +91,7 @@ impl<T> Process<T> {
             kernel,
             pid: Id::new(0),
             parent_pid,
+            args,
             label: label.into(),
             current_working_directory,
             memory_export: None,
@@ -134,6 +140,11 @@ impl<T> Process<T> {
             panic!("Cannot set join handle of a process when it is already set!");
         }
         self.join_handle = Some(join_handle);
+    }
+
+    pub fn prepare_arg(&mut self, index: u16) -> usize {
+        let self_cell = PtrCell::new(self);
+        self.set_data(&self_cell.get().args[index as usize])
     }
 
     pub async fn kill(&mut self) {
