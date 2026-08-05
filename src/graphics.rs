@@ -9,10 +9,11 @@ mod draw_region;
 pub mod graphics_state;
 
 use crate::{
-    graphics::{color::Color, draw_region::DrawRegion, graphics_state::FONT_SIZE},
+    graphics::{color::Color, draw_region::DrawRegion},
     kernel::{ProcessContext, ProcessLinker},
 };
 
+/// Loads all the system functions related to drawing pixels to an address.
 pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Result<()> {
     linker.func_wrap(
         "env",
@@ -67,11 +68,7 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
         "env",
         "set_font",
         |mut ctx: ProcessContext<T>, font: i32| {
-            ctx.data_mut().graphics_state.font = ctx
-                .data()
-                .get_memory(font as usize, FONT_SIZE)
-                .try_into()
-                .unwrap();
+            ctx.data_mut().graphics_state.set_font(font as u32);
         },
     )?;
 
@@ -385,11 +382,18 @@ pub fn load_graphics_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Re
          bg: u32| {
             let draw_address = ctx.data().get_draw_address();
 
+            let font = ctx.data().get_font();
             let text = ctx.data().get_memory(text_ptr as usize, text_len as usize);
 
-            ctx.data_mut()
-                .graphics_state
-                .draw_text(draw_address, text, x, y, fg as u8, bg as u8);
+            ctx.data_mut().graphics_state.draw_text(
+                draw_address,
+                font,
+                text,
+                x,
+                y,
+                fg as u8,
+                bg as u8,
+            );
         },
     )?;
 

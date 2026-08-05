@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use crate::graphics::{
     camera::Camera,
     color::{self, Color},
@@ -6,14 +8,23 @@ use crate::graphics::{
 
 pub const FONT_SIZE: usize = 8 * 256;
 // TODO: create a default font file using some kind of bitmap drawing program.
-const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
+pub const DEFAULT_FONT: [u8; FONT_SIZE] = [0; FONT_SIZE];
 
+/// Represents the state of drawing within a process.
+/// The reason this is part of the process itself is to avoid the overhead of type conversion within
+/// drivers.
 pub struct GraphicsState {
+    /// The current transparency color
     pub transparency_color: u8,
+    /// The 2d region of memory to draw pixels to.
     pub draw_region: DrawRegion,
+    /// The address to draw to.
     pub draw_address: usize,
+    /// The camera.
     pub camera: Camera,
-    pub font: [u8; FONT_SIZE],
+    /// The optional address of the bitmap font to use in `draw_text`.
+    /// When None, the default font is used.
+    pub font_address: Option<NonZeroU32>,
     pub fill_pattern: [u8; 8],
 }
 
@@ -24,20 +35,21 @@ impl GraphicsState {
             draw_region: DrawRegion::new(0, 0),
             draw_address: 0,
             camera: Camera::new(0, 0),
-            font: DEFAULT_FONT,
+            font_address: None,
             fill_pattern: [0; 8],
         }
     }
 
-    pub fn set_font(&mut self, font_memory: *const u8) {
-        // SAFETY: assumes that the program's font does not go outside the bounts of its memory
-        unsafe {
-            self.font = font_memory.cast::<[u8; FONT_SIZE]>().read();
-        }
+    pub fn set_font(&mut self, font_address: u32) {
+        self.font_address = NonZeroU32::new(font_address);
+    }
+
+    pub fn font_address(&self) -> Option<NonZeroU32> {
+        self.font_address
     }
 
     pub fn use_default_font(&mut self) {
-        self.font = DEFAULT_FONT;
+        self.font_address = None;
     }
 
     pub fn set_fill_pattern(&mut self, fillp: u64) {
@@ -543,7 +555,16 @@ impl GraphicsState {
         todo!()
     }
 
-    pub fn draw_text(&mut self, memory: *mut u8, text: &[u8], x: i32, y: i32, fg: u8, bg: u8) {
+    pub fn draw_text(
+        &mut self,
+        memory: *mut u8,
+        font: &[u8; FONT_SIZE],
+        text: &[u8],
+        x: i32,
+        y: i32,
+        fg: u8,
+        bg: u8,
+    ) {
         let (mut x, mut y) = self.camera.translate(x, y);
         let start_x = x;
 
@@ -556,7 +577,7 @@ impl GraphicsState {
                 x = start_x;
                 y += 8;
             } else {
-                self.draw_character_untranslated(memory, character, x, y, fg, bg);
+                self.draw_character_untranslated(memory, font, character, x, y, fg, bg);
                 x += 8;
             }
         }
@@ -566,6 +587,7 @@ impl GraphicsState {
     fn draw_character_untranslated(
         &mut self,
         memory: *mut u8,
+        font: &[u8; FONT_SIZE],
         character: u8,
         x: i32,
         y: i32,
@@ -574,7 +596,7 @@ impl GraphicsState {
     ) {
         let character = character as usize;
         for i in 0..8 {
-            let line = byte_to_8_bytes(self.font[character * 8 + i], fg, bg);
+            let line = byte_to_8_bytes(font[character * 8 + i], fg, bg);
             self.draw_line_bytes_untranslated(memory, x, y + i as i32, &line);
         }
     }

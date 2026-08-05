@@ -16,7 +16,7 @@ use wasmtime::ModuleExport;
 use crate::{
     async_file::AsyncFile,
     event::Event,
-    graphics::graphics_state::GraphicsState,
+    graphics::graphics_state::{DEFAULT_FONT, FONT_SIZE, GraphicsState},
     id::{Id, IdStore},
     kernel::{FILE_CREATE, FILE_WRITE, Kernel, Pid},
     mut_cell::MutCell,
@@ -384,6 +384,18 @@ impl<T> Process<T> {
             self.graphics_state.draw_region.area() as usize,
         )
         .as_mut_ptr()
+    }
+
+    pub fn get_font(&self) -> &'static [u8; FONT_SIZE] {
+        match self.graphics_state.font_address() {
+            Some(address) => {
+                let address = address.get() as usize;
+                (self.get_memory(address, FONT_SIZE) as &[u8])
+                    .try_into()
+                    .unwrap()
+            }
+            None => &DEFAULT_FONT,
+        }
     }
 }
 
