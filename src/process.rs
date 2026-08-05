@@ -224,12 +224,8 @@ impl<T> Process<T> {
     }
 
     fn set_current_directory(&mut self, path: &Path) -> i32 {
-        let Ok(path) = self.kernel.get_absolute_path(path) else {
-            return -2;
-        };
-
-        if self.kernel.is_directory(&path) {
-            self.current_working_directory = path;
+        if self.kernel.is_directory(path) {
+            self.current_working_directory = path.into();
             0
         } else {
             -1

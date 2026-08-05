@@ -59,6 +59,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
+name = "blaze_64"
+version = "0.1.0"
+dependencies = [
+ "cap-std",
+ "string-interner",
+ "tokio",
+ "wasmtime",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1437,16 +1447,6 @@ checksum = "09480d646178e5fdd12bb06e812d0af9a3a191dbc9cd697fdc86687beade7393"
 dependencies = [
  "leb128fmt",
  "wasmparser 0.254.0",
-]
-
-[[package]]
-name = "wasm_os"
-version = "0.1.0"
-dependencies = [
- "cap-std",
- "string-interner",
- "tokio",
- "wasmtime",
 ]
 
 [[package]]
