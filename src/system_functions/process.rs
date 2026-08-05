@@ -84,29 +84,29 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
 
     linker.func_wrap(
         "env",
-        "prepare_env",
+        "prepare_var",
         |mut ctx: ProcessContext<T>, key_ptr: i32, key_len: u32| -> u32 {
             let key = get_memory(&ctx, key_ptr, key_len);
-            ctx.data_mut().prepare_env(key) as u32
+            ctx.data_mut().prepare_var(key) as u32
         },
     )?;
 
     linker.func_wrap(
         "env",
-        "set_env",
+        "set_var",
         |mut ctx: ProcessContext<T>, key_ptr: i32, key_len: u32, value_ptr: i32, value_len: u32| {
             let key = get_memory(&ctx, key_ptr, key_len);
             let value = get_memory(&ctx, value_ptr, value_len);
-            ctx.data_mut().set_env(key, value);
+            ctx.data_mut().set_var(key, value);
         },
     )?;
 
     linker.func_wrap(
         "env",
-        "delte_env",
+        "delte_var",
         |mut ctx: ProcessContext<T>, key_ptr: i32, key_len: u32| -> u32 {
             let key = get_memory(&ctx, key_ptr, key_len);
-            ctx.data_mut().delete_env(key) as u32
+            ctx.data_mut().delete_var(key) as u32
         },
     )?;
 

@@ -153,7 +153,7 @@ impl<T> Process<T> {
         self.set_data(&self_cell.get().args[index as usize])
     }
 
-    pub fn prepare_env(&mut self, key: &[u8]) -> usize {
+    pub fn prepare_var(&mut self, key: &[u8]) -> usize {
         let self_cell = PtrCell::new(self);
         if let Some(value) = self_cell.get().environment.get(key) {
             self.set_data(value)
@@ -162,14 +162,14 @@ impl<T> Process<T> {
         }
     }
 
-    pub fn set_env(&mut self, key: &[u8], value: &[u8]) {
+    pub fn set_var(&mut self, key: &[u8], value: &[u8]) {
         self.environment.insert(
             key.to_owned().into_boxed_slice(),
             value.to_owned().into_boxed_slice(),
         );
     }
 
-    pub fn delete_env(&mut self, key: &[u8]) -> bool {
+    pub fn delete_var(&mut self, key: &[u8]) -> bool {
         self.environment.remove(key).is_some()
     }
 
