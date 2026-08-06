@@ -74,6 +74,10 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
         },
     )?;
 
+    linker.func_wrap("env", "get_argc", |mut ctx: ProcessContext<T>| -> u32 {
+        ctx.data_mut().args.len() as u32
+    })?;
+
     linker.func_wrap(
         "env",
         "prepare_arg",
