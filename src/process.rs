@@ -68,7 +68,7 @@ pub struct Process<T: 'static> {
     /// Stdin: (1, 0),
     /// Stdout: (2, 0),
     /// Stderr: (3, 0)
-    pub open_files: IdStore<AsyncFile>,
+    pub open_files: IdStore<Arc<MutCell<AsyncFile>>>,
     /// The table of iterated directories.
     pub directory_iterators: IdStore<cap_std::fs::ReadDir>,
     /// Can be awaited to end the process early.
@@ -100,9 +100,9 @@ impl<T> Process<T> {
         environment: Environment,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
-        stdin: AsyncFile,
-        stdout: AsyncFile,
-        stderr: AsyncFile,
+        stdin: Arc<MutCell<AsyncFile>>,
+        stdout: Arc<MutCell<AsyncFile>>,
+        stderr: Arc<MutCell<AsyncFile>>,
     ) -> Self {
         let mut open_files = IdStore::new();
         open_files.new_id(stdin);
@@ -262,7 +262,15 @@ impl<T> Process<T> {
             Err(_) => return Id::default(),
         };
 
-        self.open_files.new_id(AsyncFile::File(file))
+        self.open_files
+            .new_id(Arc::new(MutCell::new(AsyncFile::File(file))))
+    }
+
+    pub fn foo_file(&self, fd: Id) -> Arc<MutCell<AsyncFile>> {
+        self.open_files
+            .data(fd)
+            .cloned()
+            .unwrap_or_else(|| Arc::new(MutCell::new(AsyncFile::Null)))
     }
 
     pub async fn read_entire_file(&mut self, path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
@@ -358,7 +366,7 @@ impl<T> Process<T> {
         }
     }
 
-    pub fn get_file(&mut self, fd: Id) -> Option<&mut AsyncFile> {
+    pub fn get_file(&mut self, fd: Id) -> Option<&mut Arc<MutCell<AsyncFile>>> {
         self.open_files.data_mut(fd)
     }
 

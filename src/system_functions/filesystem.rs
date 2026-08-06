@@ -123,7 +123,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     return -2;
                 };
 
-                match file.read(buf).await {
+                match file.borrow_static().read(buf).await {
                     Ok(bytes) => bytes as i32,
                     Err(_) => -1,
                 }
@@ -142,7 +142,12 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
 
                 let mut contents = Vec::with_capacity(64);
 
-                if file.read_to_end(&mut contents).await.is_err() {
+                if file
+                    .borrow_static()
+                    .read_to_end(&mut contents)
+                    .await
+                    .is_err()
+                {
                     return -1;
                 };
 
@@ -182,7 +187,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     return -2;
                 };
 
-                match file.write(src).await {
+                match file.borrow_static().write(src).await {
                     Ok(bytes) => bytes as i32,
                     Err(_) => -1,
                 }
@@ -221,7 +226,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     return -2;
                 };
 
-                match file.seek(offset as i64, from as u8).await {
+                match file.borrow_static().seek(offset as i64, from as u8).await {
                     Ok(new_offset) => new_offset as i32,
                     Err(_) => -1,
                 }

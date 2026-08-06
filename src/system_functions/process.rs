@@ -1,8 +1,8 @@
 use tokio::task::yield_now;
 
 use crate::{
-    async_file::AsyncFile,
     cell::ptr_cell::PtrCell,
+    id::Id,
     kernel::{Kernel, Pid, ProcessContext, ProcessLinker},
     system_functions::{get_memory, get_str},
 };
@@ -29,7 +29,16 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
         "env",
         "spawn",
         |ctx: ProcessContext<T>,
-         (path_ptr, path_len, argc, arg_lens, argv): (i32, u32, u32, i32, i32)| {
+         (path_ptr, path_len, argc, arg_lens, argv, stdin, stdout, stderr): (
+            i32,
+            u32,
+            u32,
+            i32,
+            i32,
+            i32,
+            i32,
+            i32,
+        )| {
             let result = get_str(&ctx, path_ptr, path_len);
             let pid = ctx.data().pid;
 
@@ -61,9 +70,9 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     path,
                     pid,
                     args.into_boxed_slice(),
-                    AsyncFile::Null,
-                    AsyncFile::Null,
-                    AsyncFile::Null,
+                    ctx.data().foo_file(Id::from_i32(stdin)),
+                    ctx.data().foo_file(Id::from_i32(stdout)),
+                    ctx.data().foo_file(Id::from_i32(stderr)),
                 )
                 .await
                 {

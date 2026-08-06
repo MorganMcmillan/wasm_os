@@ -4,6 +4,7 @@ use std::{
     io::{self, ErrorKind::NotFound, Read},
     path::{Path, PathBuf},
     ptr::NonNull,
+    sync::Arc,
     time::Duration,
 };
 
@@ -147,9 +148,9 @@ impl<T: 'static> Kernel<T> {
                 path,
                 Pid::default(),
                 Box::new([]),
-                AsyncFile::stdin(),
-                AsyncFile::stdout(),
-                AsyncFile::stderr(),
+                Arc::new(MutCell::new(AsyncFile::stdin())),
+                Arc::new(MutCell::new(AsyncFile::stdout())),
+                Arc::new(MutCell::new(AsyncFile::stderr())),
             )
             .await
         }
@@ -181,9 +182,9 @@ impl<T: 'static> Kernel<T> {
         path: &str,
         parent: Pid,
         args: Box<[Box<[u8]>]>,
-        stdin: AsyncFile,
-        stdout: AsyncFile,
-        stderr: AsyncFile,
+        stdin: Arc<MutCell<AsyncFile>>,
+        stdout: Arc<MutCell<AsyncFile>>,
+        stderr: Arc<MutCell<AsyncFile>>,
     ) -> Result<Pid, CreateProcessError> {
         let pid = Kernel::create_process(kernel, path, parent, args, stdin, stdout, stderr).await?;
         let process = kernel.borrow_static().get_process_mut(pid).unwrap();
@@ -207,9 +208,9 @@ impl<T: 'static> Kernel<T> {
         path: &str,
         parent: Pid,
         args: Box<[Box<[u8]>]>,
-        stdin: AsyncFile,
-        stdout: AsyncFile,
-        stderr: AsyncFile,
+        stdin: Arc<MutCell<AsyncFile>>,
+        stdout: Arc<MutCell<AsyncFile>>,
+        stderr: Arc<MutCell<AsyncFile>>,
     ) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
