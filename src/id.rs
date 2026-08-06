@@ -97,6 +97,10 @@ impl<T> IdStore<T> {
         self.dense_array.get(id.index() as usize - 1).map(|i| i.0)
     }
 
+    fn set_dense_index(&mut self, id: Id, index: usize) {
+        self.dense_array.get_mut(id.index() as usize - 1).unwrap().0 = index;
+    }
+
     /// Checks if the id is still valid.
     /// An id is invalid if it is deleted, not yet created, or has a different version number.
     pub fn id_is_valid(&self, id: Id) -> bool {
@@ -130,6 +134,9 @@ impl<T> IdStore<T> {
 
         self.ids.swap(index, last_live_index);
         self.live_count -= 1;
+
+        self.set_dense_index(id, last_live_index);
+        self.set_dense_index(self.ids[index], index);
 
         true
     }
