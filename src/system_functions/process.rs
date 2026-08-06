@@ -121,7 +121,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
             Box::new(async move {
                 // Await join handle to end program execution.
                 ctx.data_mut().kill().await;
-                ctx.data_mut().exit_code = Some(code as u16);
+                *ctx.data_mut().exit_code.borrow_static() = Some(code as u16);
             })
         },
     )?;
@@ -198,6 +198,23 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
             ctx.data().kernel.get_pid_by_name(name).as_i32()
         },
     )?;
+
+    linker.func_wrap_async("env", "wait", |ctx: ProcessContext<T>, (pid,): (i32,)| {
+        let pid = Pid::from_i32(pid);
+        Box::new(async move {
+            let Some(process) = ctx.data().kernel.get_process(pid) else {
+                return -1;
+            };
+
+            let exit_code = process.store.data().exit_code.clone();
+            loop {
+                if let Some(code) = exit_code.borrow_static() {
+                    return *code as i32;
+                };
+                yield_now().await;
+            }
+        })
+    })?;
 
     Ok(())
 }

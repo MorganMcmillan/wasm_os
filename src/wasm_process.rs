@@ -191,13 +191,23 @@ impl<T> WasmProcess<T> {
                 Ready(result) => {
                     let code = match result {
                         Ok(code) => {
-                            self_cell.get_mut().store.data_mut().exit_code = Some(code as u16);
+                            *self_cell
+                                .get_mut()
+                                .store
+                                .data_mut()
+                                .exit_code
+                                .borrow_static() = Some(code as u16);
                             code
                         }
                         Err(e) => {
                             eprintln!("{e}");
-                            self_cell.get_mut().store.data_mut().exit_code = Some(100);
-                            100
+                            *self_cell
+                                .get_mut()
+                                .store
+                                .data_mut()
+                                .exit_code
+                                .borrow_static()
+                                .get_or_insert(100) as i32
                         }
                     };
 

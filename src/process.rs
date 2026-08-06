@@ -6,6 +6,7 @@ use std::{
     io,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
+    sync::Arc,
     time::UNIX_EPOCH,
 };
 
@@ -74,7 +75,7 @@ pub struct Process<T: 'static> {
     pub join_handle: Option<JoinHandle<i32>>,
     /// The eventual return value of the process.
     /// Currently has no use.
-    pub exit_code: Option<u16>,
+    pub exit_code: Arc<MutCell<Option<u16>>>,
     /// The list of children.
     /// TODO: update this when a child exits.
     pub children: Vec<Pid>,
@@ -120,7 +121,7 @@ impl<T> Process<T> {
             open_files,
             directory_iterators: IdStore::new(),
             join_handle: None,
-            exit_code: None,
+            exit_code: Arc::new(MutCell::new(None)),
             children: Vec::new(),
             child_iter_index: None,
             event_queue: Vec::new(),
