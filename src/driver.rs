@@ -5,6 +5,7 @@ use crate::{
     kernel::{Kernel, ProcessLinker},
 };
 
+/// Drivers are used to expose non-system functions to programs.
 pub trait Driver<T: 'static>: Any {
     // This driver's name.
     // IMPORTANT: this name MUST start with "driver_"
