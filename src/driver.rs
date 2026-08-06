@@ -1,8 +1,8 @@
 use std::any::Any;
 
 use crate::{
+    cell::mut_cell::MutCell,
     kernel::{Kernel, ProcessLinker},
-    mut_cell::MutCell,
 };
 
 pub trait Driver<T: 'static>: Any {

@@ -133,7 +133,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
             };
 
             let event_name = ctx.data().kernel.get_event_name(symbol);
-            ctx.data_mut().set_data(event_name.as_bytes()) as i32
+            ctx.data_mut().prepare_bytes(event_name.as_bytes()) as i32
         },
     )?;
 

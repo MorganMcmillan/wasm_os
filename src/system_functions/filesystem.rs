@@ -1,10 +1,10 @@
 use std::os::unix::ffi::OsStrExt as _;
 
 use crate::{
+    cell::ptr_cell::PtrCell,
     id::Id,
     kernel::{ProcessContext, ProcessLinker},
     process::Process,
-    ptr_cell::PtrCell,
     system_functions::{get_memory, get_str},
 };
 
@@ -146,7 +146,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     return -1;
                 };
 
-                ctx.data_mut().set_data(&contents) as i32
+                ctx.data_mut().prepare_bytes(&contents) as i32
             })
         },
     )?;
@@ -166,7 +166,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                     Err(_) => return -1,
                 };
 
-                ctx.data_mut().set_data(&contents) as i32
+                ctx.data_mut().prepare_bytes(&contents) as i32
             })
         },
     )?;
@@ -358,7 +358,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
                 dir_id: Id,
             ) -> i32 {
                 match dir_iter.next() {
-                    Some(Ok(entry)) => process.set_data(entry.file_name().as_bytes()) as i32,
+                    Some(Ok(entry)) => process.prepare_bytes(entry.file_name().as_bytes()) as i32,
                     Some(Err(_)) => try_next(process, dir_iter, dir_id),
                     None => {
                         process.directory_iterators.delete_id(dir_id);

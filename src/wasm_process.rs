@@ -12,12 +12,12 @@ use std::{
 };
 
 use crate::{
+    cell::mut_cell::MutCell,
+    cell::ptr_cell::PtrCell,
     event::Event,
     graphics::load_graphics_functions,
     kernel::{Kernel, Pid, ProcessLinker},
-    mut_cell::MutCell,
     process::Process,
-    ptr_cell::PtrCell,
     system_functions::load_system_functions,
 };
 
@@ -229,7 +229,7 @@ impl<T> WasmProcess<T> {
     async fn process_queue(&mut self) {
         // Prevent prepared data from being overwriten by a handler, in the rare case that the
         // process interupts when data is being prepared.
-        let previous_data = self.store.data_mut().byte_data.take();
+        let previous_data = self.store.data_mut().data.take();
 
         let mut old_event_queue = Vec::new();
         std::mem::swap(&mut old_event_queue, &mut self.store.data_mut().event_queue);
@@ -238,7 +238,7 @@ impl<T> WasmProcess<T> {
             self.process_event(event).await;
         }
 
-        self.store.data_mut().byte_data = previous_data;
+        self.store.data_mut().data = previous_data;
     }
 
     /// Processes a single event.

@@ -18,10 +18,10 @@ use wasmtime::{Caller, Config, Engine};
 
 use crate::{
     async_file::AsyncFile,
+    cell::mut_cell::MutCell,
     driver::Driver,
     event::Event,
     id::{Id, IdStore},
-    mut_cell::MutCell,
     process::Process,
     wasm_process::WasmProcess,
 };

@@ -4,6 +4,7 @@ use std::{
     any::Any,
     collections::HashMap,
     io,
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -15,16 +16,31 @@ use wasmtime::ModuleExport;
 
 use crate::{
     async_file::AsyncFile,
+    cell::mut_cell::MutCell,
+    cell::ptr_cell::PtrCell,
     event::Event,
     graphics::graphics_state::GraphicsState,
     id::{Id, IdStore},
     kernel::{FILE_CREATE, FILE_WRITE, Kernel, Pid},
-    mut_cell::MutCell,
-    ptr_cell::PtrCell,
     wasm_process::WasmProcess,
 };
 
 type Environment = HashMap<Box<[u8]>, Box<[u8]>>;
+
+pub enum PreparedData {
+    None,
+    Arg(u16),
+    Bytes(Box<[u8]>),
+    Label,
+    PidLabel(Pid),
+    Cwd,
+}
+
+impl PreparedData {
+    pub fn take(&mut self) -> Self {
+        std::mem::replace(self, Self::None)
+    }
+}
 
 /// A process represents the state of a running Webassembly process.
 /// This is just the data associated with it.
@@ -69,7 +85,7 @@ pub struct Process<T: 'static> {
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
     /// The default wasm function for any event
     pub default_event_handler: Option<wasmtime::TypedFunc<i32, ()>>,
-    pub byte_data: Option<Vec<u8>>,
+    pub data: PreparedData,
     pub graphics_state: GraphicsState,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
@@ -110,7 +126,7 @@ impl<T> Process<T> {
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             default_event_handler: None,
-            byte_data: Some(Vec::with_capacity(256)),
+            data: PreparedData::None,
             graphics_state: GraphicsState::new(),
             driver_states: HashMap::new(),
         }
@@ -149,15 +165,16 @@ impl<T> Process<T> {
     }
 
     pub fn prepare_arg(&mut self, index: u16) -> usize {
-        let self_cell = PtrCell::new(self);
-        self.set_data(&self_cell.get().args[index as usize])
+        self.data = PreparedData::Arg(index);
+        self.args[index as usize].len()
     }
 
     pub fn prepare_var(&mut self, key: &[u8]) -> usize {
         let self_cell = PtrCell::new(self);
         if let Some(value) = self_cell.get().environment.get(key) {
-            self.set_data(value)
+            self.prepare_bytes(value)
         } else {
+            self.data = PreparedData::None;
             0
         }
     }
@@ -372,9 +389,45 @@ impl<T> Process<T> {
 
     // Data
 
-    pub fn set_data(&mut self, data: &[u8]) -> usize {
-        self.byte_data = Some(data.into());
-        data.len()
+    pub fn prepare_bytes(&mut self, bytes: &[u8]) -> usize {
+        self.data = PreparedData::Bytes(bytes.to_owned().into_boxed_slice());
+        self.get_data_length()
+    }
+
+    pub fn prepare_label(&mut self) -> usize {
+        self.data = PreparedData::Label;
+        self.get_data_length()
+    }
+
+    pub fn prepare_process_label(&mut self, pid: Pid) -> usize {
+        self.data = PreparedData::PidLabel(pid);
+        self.get_data_length()
+    }
+
+    pub fn prepare_cwd(&mut self) -> usize {
+        self.data = PreparedData::Cwd;
+        self.get_data_length()
+    }
+
+    pub fn get_data_length(&self) -> usize {
+        self.data_to_bytes().len()
+    }
+
+    pub fn data_to_bytes(&self) -> &[u8] {
+        match &self.data {
+            PreparedData::None => &[],
+            PreparedData::Bytes(b) => b,
+            PreparedData::Arg(i) => &self.args[*i as usize],
+            PreparedData::Label => self.label.as_bytes(),
+            PreparedData::PidLabel(pid) => {
+                if let Some(process) = self.kernel.get_process(*pid) {
+                    process.store.data().label.as_bytes()
+                } else {
+                    &[]
+                }
+            }
+            PreparedData::Cwd => self.current_working_directory.as_os_str().as_bytes(),
+        }
     }
 
     // Drivers

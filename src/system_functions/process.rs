@@ -2,8 +2,8 @@ use tokio::task::yield_now;
 
 use crate::{
     async_file::AsyncFile,
+    cell::ptr_cell::PtrCell,
     kernel::{Kernel, Pid, ProcessContext, ProcessLinker},
-    ptr_cell::PtrCell,
     system_functions::{get_memory, get_str},
 };
 
@@ -182,7 +182,7 @@ pub fn load_system_functions<T>(linker: &mut ProcessLinker<T>) -> wasmtime::Resu
         |mut ctx: ProcessContext<T>| -> i32 {
             let mut ctx_cell = PtrCell::new(&mut ctx);
             let label = ctx.data().label.as_bytes();
-            ctx_cell.get_mut().data_mut().set_data(label) as i32
+            ctx_cell.get_mut().data_mut().prepare_bytes(label) as i32
         },
     )?;
 
