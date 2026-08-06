@@ -12,12 +12,12 @@ use std::{
 };
 
 use crate::{
+    cell::mut_cell::MutCell,
+    cell::ptr_cell::PtrCell,
     event::Event,
     graphics::load_graphics_functions,
     kernel::{Kernel, Pid, ProcessLinker},
-    mut_cell::MutCell,
     process::Process,
-    ptr_cell::PtrCell,
     system_functions::load_system_functions,
 };
 
@@ -191,13 +191,23 @@ impl<T> WasmProcess<T> {
                 Ready(result) => {
                     let code = match result {
                         Ok(code) => {
-                            self_cell.get_mut().store.data_mut().exit_code = Some(code as u16);
+                            *self_cell
+                                .get_mut()
+                                .store
+                                .data_mut()
+                                .exit_code
+                                .borrow_static() = Some(code as u16);
                             code
                         }
                         Err(e) => {
                             eprintln!("{e}");
-                            self_cell.get_mut().store.data_mut().exit_code = Some(100);
-                            100
+                            *self_cell
+                                .get_mut()
+                                .store
+                                .data_mut()
+                                .exit_code
+                                .borrow_static()
+                                .get_or_insert(100) as i32
                         }
                     };
 
@@ -229,7 +239,7 @@ impl<T> WasmProcess<T> {
     async fn process_queue(&mut self) {
         // Prevent prepared data from being overwriten by a handler, in the rare case that the
         // process interupts when data is being prepared.
-        let previous_data = self.store.data_mut().byte_data.take();
+        let previous_data = self.store.data_mut().data.take();
 
         let mut old_event_queue = Vec::new();
         std::mem::swap(&mut old_event_queue, &mut self.store.data_mut().event_queue);
@@ -238,7 +248,7 @@ impl<T> WasmProcess<T> {
             self.process_event(event).await;
         }
 
-        self.store.data_mut().byte_data = previous_data;
+        self.store.data_mut().data = previous_data;
     }
 
     /// Processes a single event.

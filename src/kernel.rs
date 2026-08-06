@@ -4,6 +4,7 @@ use std::{
     io::{self, ErrorKind::NotFound, Read},
     path::{Path, PathBuf},
     ptr::NonNull,
+    sync::Arc,
     time::Duration,
 };
 
@@ -18,10 +19,10 @@ use wasmtime::{Caller, Config, Engine};
 
 use crate::{
     async_file::AsyncFile,
+    cell::mut_cell::MutCell,
     driver::Driver,
     event::Event,
     id::{Id, IdStore},
-    mut_cell::MutCell,
     process::Process,
     wasm_process::WasmProcess,
 };
@@ -146,9 +147,10 @@ impl<T: 'static> Kernel<T> {
                 kernel,
                 path,
                 Pid::default(),
-                AsyncFile::stdin(),
-                AsyncFile::stdout(),
-                AsyncFile::stderr(),
+                Box::new([]),
+                Arc::new(MutCell::new(AsyncFile::stdin())),
+                Arc::new(MutCell::new(AsyncFile::stdout())),
+                Arc::new(MutCell::new(AsyncFile::stderr())),
             )
             .await
         }
@@ -179,11 +181,12 @@ impl<T: 'static> Kernel<T> {
         kernel: &'static MutCell<Kernel<T>>,
         path: &str,
         parent: Pid,
-        stdin: AsyncFile,
-        stdout: AsyncFile,
-        stderr: AsyncFile,
+        args: Box<[Box<[u8]>]>,
+        stdin: Arc<MutCell<AsyncFile>>,
+        stdout: Arc<MutCell<AsyncFile>>,
+        stderr: Arc<MutCell<AsyncFile>>,
     ) -> Result<Pid, CreateProcessError> {
-        let pid = Kernel::create_process(kernel, path, parent, stdin, stdout, stderr).await?;
+        let pid = Kernel::create_process(kernel, path, parent, args, stdin, stdout, stderr).await?;
         let process = kernel.borrow_static().get_process_mut(pid).unwrap();
         let join_handle = task::spawn(process.run());
 
@@ -204,9 +207,10 @@ impl<T: 'static> Kernel<T> {
         kernel: &'static MutCell<Kernel<T>>,
         path: &str,
         parent: Pid,
-        stdin: AsyncFile,
-        stdout: AsyncFile,
-        stderr: AsyncFile,
+        args: Box<[Box<[u8]>]>,
+        stdin: Arc<MutCell<AsyncFile>>,
+        stdout: Arc<MutCell<AsyncFile>>,
+        stderr: Arc<MutCell<AsyncFile>>,
     ) -> Result<Pid, CreateProcessError> {
         if !path.ends_with(".wasm") {
             return Err(CreateProcessError::IncorrectFileType);
@@ -219,7 +223,7 @@ impl<T: 'static> Kernel<T> {
             .and_then(|stem| stem.to_str())
             .unwrap_or("_UNKNOWN_PROGRAM");
 
-        let cwd = if parent.number() == 0 {
+        let cwd = if parent.index() == 0 {
             PathBuf::new()
         } else {
             kernel
@@ -231,7 +235,29 @@ impl<T: 'static> Kernel<T> {
                 .clone()
         };
 
-        let mut process = Process::new(kernel, parent, label, cwd, stdin, stdout, stderr);
+        let environment = if parent.index() == 0 {
+            HashMap::new()
+        } else {
+            kernel
+                .get_process(parent)
+                .unwrap()
+                .store
+                .data()
+                .environment
+                .clone()
+        };
+
+        let mut process = Process::new(
+            kernel,
+            parent,
+            args,
+            environment,
+            label,
+            cwd,
+            stdin,
+            stdout,
+            stderr,
+        );
 
         for (id, driver) in kernel.borrow_static().drivers.iter_mut().enumerate() {
             if let Some(process_state) = driver.create_process_state() {
@@ -258,7 +284,7 @@ impl<T: 'static> Kernel<T> {
             .set_pid(pid);
 
         // If not root process:
-        if parent.number() != 0 {
+        if parent.index() != 0 {
             kernel
                 .borrow_static()
                 .get_process_mut(parent)

@@ -4,7 +4,9 @@ use std::{
     any::Any,
     collections::HashMap,
     io,
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
+    sync::Arc,
     time::UNIX_EPOCH,
 };
 
@@ -15,13 +17,31 @@ use wasmtime::ModuleExport;
 
 use crate::{
     async_file::AsyncFile,
+    cell::mut_cell::MutCell,
+    cell::ptr_cell::PtrCell,
     event::Event,
     graphics::graphics_state::GraphicsState,
     id::{Id, IdStore},
     kernel::{FILE_CREATE, FILE_WRITE, Kernel, Pid},
-    mut_cell::MutCell,
     wasm_process::WasmProcess,
 };
+
+type Environment = HashMap<Box<[u8]>, Box<[u8]>>;
+
+pub enum PreparedData {
+    None,
+    Arg(u16),
+    Bytes(Box<[u8]>),
+    Label,
+    PidLabel(Pid),
+    Cwd,
+}
+
+impl PreparedData {
+    pub fn take(&mut self) -> Self {
+        std::mem::replace(self, Self::None)
+    }
+}
 
 /// A process represents the state of a running Webassembly process.
 /// This is just the data associated with it.
@@ -33,6 +53,10 @@ pub struct Process<T: 'static> {
     pub pid: Pid,
     /// The parent process' id
     pub parent_pid: Pid,
+    /// The list of arguments given to the process
+    pub args: Box<[Box<[u8]>]>,
+    /// The process' environment
+    pub environment: Environment,
     /// The label is this process' file name without the extension
     pub label: Box<str>,
     /// The directory for which files are opened relative to
@@ -44,14 +68,14 @@ pub struct Process<T: 'static> {
     /// Stdin: (1, 0),
     /// Stdout: (2, 0),
     /// Stderr: (3, 0)
-    pub open_files: IdStore<AsyncFile>,
+    pub open_files: IdStore<Arc<MutCell<AsyncFile>>>,
     /// The table of iterated directories.
     pub directory_iterators: IdStore<cap_std::fs::ReadDir>,
     /// Can be awaited to end the process early.
     pub join_handle: Option<JoinHandle<i32>>,
     /// The eventual return value of the process.
     /// Currently has no use.
-    pub exit_code: Option<u16>,
+    pub exit_code: Arc<MutCell<Option<u16>>>,
     /// The list of children.
     /// TODO: update this when a child exits.
     pub children: Vec<Pid>,
@@ -62,20 +86,23 @@ pub struct Process<T: 'static> {
     pub event_handlers: HashMap<SymbolU32, wasmtime::TypedFunc<i32, ()>>,
     /// The default wasm function for any event
     pub default_event_handler: Option<wasmtime::TypedFunc<i32, ()>>,
-    pub byte_data: Option<Vec<u8>>,
+    pub data: PreparedData,
     pub graphics_state: GraphicsState,
     pub driver_states: HashMap<usize, Box<dyn Any + Send>>,
 }
 
 impl<T> Process<T> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         kernel: &'static MutCell<Kernel<T>>,
         parent_pid: Pid,
+        args: Box<[Box<[u8]>]>,
+        environment: Environment,
         label: impl Into<Box<str>>,
         current_working_directory: PathBuf,
-        stdin: AsyncFile,
-        stdout: AsyncFile,
-        stderr: AsyncFile,
+        stdin: Arc<MutCell<AsyncFile>>,
+        stdout: Arc<MutCell<AsyncFile>>,
+        stderr: Arc<MutCell<AsyncFile>>,
     ) -> Self {
         let mut open_files = IdStore::new();
         open_files.new_id(stdin);
@@ -86,19 +113,21 @@ impl<T> Process<T> {
             kernel,
             pid: Id::new(0),
             parent_pid,
+            args,
+            environment,
             label: label.into(),
             current_working_directory,
             memory_export: None,
             open_files,
             directory_iterators: IdStore::new(),
             join_handle: None,
-            exit_code: None,
+            exit_code: Arc::new(MutCell::new(None)),
             children: Vec::new(),
             child_iter_index: None,
             event_queue: Vec::new(),
             event_handlers: HashMap::new(),
             default_event_handler: None,
-            byte_data: Some(Vec::with_capacity(256)),
+            data: PreparedData::None,
             graphics_state: GraphicsState::new(),
             driver_states: HashMap::new(),
         }
@@ -134,6 +163,32 @@ impl<T> Process<T> {
             panic!("Cannot set join handle of a process when it is already set!");
         }
         self.join_handle = Some(join_handle);
+    }
+
+    pub fn prepare_arg(&mut self, index: u16) -> usize {
+        self.data = PreparedData::Arg(index);
+        self.args[index as usize].len()
+    }
+
+    pub fn prepare_var(&mut self, key: &[u8]) -> usize {
+        let self_cell = PtrCell::new(self);
+        if let Some(value) = self_cell.get().environment.get(key) {
+            self.prepare_bytes(value)
+        } else {
+            self.data = PreparedData::None;
+            0
+        }
+    }
+
+    pub fn set_var(&mut self, key: &[u8], value: &[u8]) {
+        self.environment.insert(
+            key.to_owned().into_boxed_slice(),
+            value.to_owned().into_boxed_slice(),
+        );
+    }
+
+    pub fn delete_var(&mut self, key: &[u8]) -> bool {
+        self.environment.remove(key).is_some()
     }
 
     pub async fn kill(&mut self) {
@@ -207,7 +262,15 @@ impl<T> Process<T> {
             Err(_) => return Id::default(),
         };
 
-        self.open_files.new_id(AsyncFile::File(file))
+        self.open_files
+            .new_id(Arc::new(MutCell::new(AsyncFile::File(file))))
+    }
+
+    pub fn foo_file(&self, fd: Id) -> Arc<MutCell<AsyncFile>> {
+        self.open_files
+            .data(fd)
+            .cloned()
+            .unwrap_or_else(|| Arc::new(MutCell::new(AsyncFile::Null)))
     }
 
     pub async fn read_entire_file(&mut self, path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
@@ -303,7 +366,7 @@ impl<T> Process<T> {
         }
     }
 
-    pub fn get_file(&mut self, fd: Id) -> Option<&mut AsyncFile> {
+    pub fn get_file(&mut self, fd: Id) -> Option<&mut Arc<MutCell<AsyncFile>>> {
         self.open_files.data_mut(fd)
     }
 
@@ -335,9 +398,45 @@ impl<T> Process<T> {
 
     // Data
 
-    pub fn set_data(&mut self, data: &[u8]) -> usize {
-        self.byte_data = Some(data.into());
-        data.len()
+    pub fn prepare_bytes(&mut self, bytes: &[u8]) -> usize {
+        self.data = PreparedData::Bytes(bytes.to_owned().into_boxed_slice());
+        self.get_data_length()
+    }
+
+    pub fn prepare_label(&mut self) -> usize {
+        self.data = PreparedData::Label;
+        self.get_data_length()
+    }
+
+    pub fn prepare_process_label(&mut self, pid: Pid) -> usize {
+        self.data = PreparedData::PidLabel(pid);
+        self.get_data_length()
+    }
+
+    pub fn prepare_cwd(&mut self) -> usize {
+        self.data = PreparedData::Cwd;
+        self.get_data_length()
+    }
+
+    pub fn get_data_length(&self) -> usize {
+        self.data_to_bytes().len()
+    }
+
+    pub fn data_to_bytes(&self) -> &[u8] {
+        match &self.data {
+            PreparedData::None => &[],
+            PreparedData::Bytes(b) => b,
+            PreparedData::Arg(i) => &self.args[*i as usize],
+            PreparedData::Label => self.label.as_bytes(),
+            PreparedData::PidLabel(pid) => {
+                if let Some(process) = self.kernel.get_process(*pid) {
+                    process.store.data().label.as_bytes()
+                } else {
+                    &[]
+                }
+            }
+            PreparedData::Cwd => self.current_working_directory.as_os_str().as_bytes(),
+        }
     }
 
     // Drivers

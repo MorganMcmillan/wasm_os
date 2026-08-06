@@ -10,7 +10,7 @@ impl Id {
         Self(number, 0)
     }
 
-    pub fn number(&self) -> u16 {
+    pub fn index(&self) -> u16 {
         self.0
     }
 
@@ -24,7 +24,7 @@ impl Id {
     }
 
     pub fn as_i32(&self) -> i32 {
-        self.number() as i32 | (self.version() as i32) << 16
+        self.index() as i32 | (self.version() as i32) << 16
     }
 
     pub fn from_i32(number: i32) -> Self {
@@ -64,7 +64,7 @@ impl<T> IdStore<T> {
             // Recycle id
             let id = &mut self.ids[self.live_count];
             id.increment_version();
-            self.dense_array[id.number() as usize - 1] = (self.live_count, Some(item));
+            self.dense_array[id.index() as usize - 1] = (self.live_count, Some(item));
             self.live_count += 1;
             *id
         }
@@ -82,19 +82,23 @@ impl<T> IdStore<T> {
     /// Gets the data associated with this Id.
     pub fn data(&self, id: Id) -> Option<&T> {
         self.dense_array
-            .get(id.number() as usize)
+            .get(id.index() as usize)
             .and_then(|i| i.1.as_ref())
     }
 
     /// Mutably gets the data associated with this Id.
     pub fn data_mut(&mut self, id: Id) -> Option<&mut T> {
         self.dense_array
-            .get_mut(id.number() as usize - 1)
+            .get_mut(id.index() as usize - 1)
             .and_then(|i| i.1.as_mut())
     }
 
     fn get_dense_index(&self, id: Id) -> Option<usize> {
-        self.dense_array.get(id.number() as usize - 1).map(|i| i.0)
+        self.dense_array.get(id.index() as usize - 1).map(|i| i.0)
+    }
+
+    fn set_dense_index(&mut self, id: Id, index: usize) {
+        self.dense_array.get_mut(id.index() as usize - 1).unwrap().0 = index;
     }
 
     /// Checks if the id is still valid.
@@ -112,7 +116,7 @@ impl<T> IdStore<T> {
     }
 
     fn delete_data(&mut self, id: Id) {
-        if let Some(pair) = self.dense_array.get_mut(id.number() as usize - 1) {
+        if let Some(pair) = self.dense_array.get_mut(id.index() as usize - 1) {
             pair.1 = None;
         }
     }
@@ -130,6 +134,9 @@ impl<T> IdStore<T> {
 
         self.ids.swap(index, last_live_index);
         self.live_count -= 1;
+
+        self.set_dense_index(id, last_live_index);
+        self.set_dense_index(self.ids[index], index);
 
         true
     }
